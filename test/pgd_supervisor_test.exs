@@ -9,7 +9,7 @@ defmodule PgdSupervisorTest do
   end
 
   test "can be supervised directly" do
-    children = [{PgdSupervisor, name: :dyn_sup_spec_test}]
+    children = [{PgdSupervisor, name: :dyn_sup_spec_test, scope: :test}]
     assert {:ok, _} = Supervisor.start_link(children, strategy: :one_for_one)
     assert PgdSupervisor.which_children(:dyn_sup_spec_test) == []
   end
@@ -18,15 +18,15 @@ defmodule PgdSupervisorTest do
     {:ok, _} = Registry.start_link(keys: :unique, name: DynSup.Registry)
 
     children = [
-      {PgdSupervisor, name: :simple_name},
-      {PgdSupervisor, name: {:global, :global_name}},
-      {PgdSupervisor, name: {:via, Registry, {DynSup.Registry, "via_name"}}}
+      {PgdSupervisor, name: :simple_name, scope: :test},
+      {PgdSupervisor, name: {:global, :global_name}, scope: :test},
+      {PgdSupervisor, name: {:via, Registry, {DynSup.Registry, "via_name"}}, scope: :test}
     ]
 
     assert {:ok, supsup} = Supervisor.start_link(children, strategy: :one_for_one)
 
     assert {:ok, no_name_dynsup} =
-             Supervisor.start_child(supsup, {PgdSupervisor, strategy: :one_for_one})
+             Supervisor.start_child(supsup, {PgdSupervisor, strategy: :one_for_one, scope: :test})
 
     assert PgdSupervisor.which_children(:simple_name) == []
     assert PgdSupervisor.which_children({:global, :global_name}) == []
@@ -66,11 +66,18 @@ defmodule PgdSupervisorTest do
   end
 
   describe "init/1" do
+    test "cannot start w/o scope" do
+      assert_raise ArgumentError, fn ->
+        PgdSupervisor.init([])
+      end
+    end
+
     test "set default options" do
-      assert PgdSupervisor.init([]) ==
+      assert PgdSupervisor.init(scope: :test) ==
                {:ok,
                 %{
                   strategy: :one_for_one,
+                  scope: :test,
                   intensity: 3,
                   period: 5,
                   max_children: :infinity,
@@ -125,24 +132,25 @@ defmodule PgdSupervisorTest do
     end
 
     test "with spawn_opt" do
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, spawn_opt: [priority: :high])
+      opts = [strategy: :one_for_one, scope: :test, spawn_opt: [priority: :high]]
+      {:ok, pid} = PgdSupervisor.start_link(opts)
 
       assert Process.info(pid, :priority) == {:priority, :high}
     end
 
     test "sets initial call to the same as a regular supervisor" do
-      {:ok, pid} = Supervisor.start_link([], strategy: :one_for_one)
+      {:ok, pid} = Supervisor.start_link([], strategy: :one_for_one, scope: :test)
       assert :proc_lib.initial_call(pid) == {:supervisor, Supervisor.Default, [:Argument__1]}
 
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
       assert :proc_lib.initial_call(pid) == {:supervisor, Supervisor.Default, [:Argument__1]}
     end
 
     test "returns the callback module" do
-      {:ok, pid} = Supervisor.start_link([], strategy: :one_for_one)
+      {:ok, pid} = Supervisor.start_link([], strategy: :one_for_one, scope: :test)
       assert :supervisor.get_callback_module(pid) == Supervisor.Default
 
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
       assert :supervisor.get_callback_module(pid) == Supervisor.Default
     end
   end
@@ -190,21 +198,21 @@ defmodule PgdSupervisorTest do
 
   describe "start_child/2" do
     test "supports old child spec" do
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
       child = {Task, {Task, :start_link, [fn -> :ok end]}, :temporary, 5000, :worker, [Task]}
       assert {:ok, pid} = PgdSupervisor.start_child(pid, child)
       assert is_pid(pid)
     end
 
     test "supports new child spec as tuple" do
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
       child = %{id: Task, restart: :temporary, start: {Task, :start_link, [fn -> :ok end]}}
       assert {:ok, pid} = PgdSupervisor.start_child(pid, child)
       assert is_pid(pid)
     end
 
     test "supports new child spec" do
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
       child = {Task, fn -> Process.sleep(:infinity) end}
       assert {:ok, pid} = PgdSupervisor.start_child(pid, child)
       assert is_pid(pid)
@@ -214,7 +222,9 @@ defmodule PgdSupervisorTest do
       parent = self()
       fun = fn -> send(parent, :from_child) end
 
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, extra_arguments: [fun])
+      {:ok, pid} =
+        PgdSupervisor.start_link(strategy: :one_for_one, scope: :test, extra_arguments: [fun])
+
       child = %{id: Task, restart: :temporary, start: {Task, :start_link, []}}
       assert {:ok, pid} = PgdSupervisor.start_child(pid, child)
       assert is_pid(pid)
@@ -246,7 +256,7 @@ defmodule PgdSupervisorTest do
     end
 
     test "with different returns" do
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
 
       assert {:ok, _, :extra} = PgdSupervisor.start_child(pid, current_module_worker([:ok3]))
       assert {:ok, _} = PgdSupervisor.start_child(pid, current_module_worker([:ok2]))
@@ -259,7 +269,7 @@ defmodule PgdSupervisorTest do
     end
 
     test "with throw/error/exit" do
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
 
       assert {:error, {{:nocatch, :oops}, [_ | _]}} =
                PgdSupervisor.start_child(pid, current_module_worker([:non_local, :throw]))
@@ -272,7 +282,7 @@ defmodule PgdSupervisorTest do
     end
 
     test "with max_children" do
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, max_children: 0)
+      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test, max_children: 0)
 
       assert {:error, :max_children} =
                PgdSupervisor.start_child(pid, current_module_worker([:ok2]))
@@ -280,7 +290,7 @@ defmodule PgdSupervisorTest do
 
     test "temporary child is not restarted regardless of reason" do
       child = current_module_worker([:ok2], restart: :temporary)
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
 
       assert {:ok, child_pid} = PgdSupervisor.start_child(pid, child)
       assert_kill(child_pid, :shutdown)
@@ -293,7 +303,7 @@ defmodule PgdSupervisorTest do
 
     test "transient child is restarted unless normal/shutdown/{shutdown, _}" do
       child = current_module_worker([:ok2], restart: :transient)
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
 
       assert {:ok, child_pid} = PgdSupervisor.start_child(pid, child)
       assert_kill(child_pid, :shutdown)
@@ -310,7 +320,9 @@ defmodule PgdSupervisorTest do
 
     test "permanent child is restarted regardless of reason" do
       child = current_module_worker([:ok2], restart: :permanent)
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, max_restarts: 100_000)
+
+      {:ok, pid} =
+        PgdSupervisor.start_link(strategy: :one_for_one, scope: :test, max_restarts: 100_000)
 
       assert {:ok, child_pid} = PgdSupervisor.start_child(pid, child)
       assert_kill(child_pid, :shutdown)
@@ -326,7 +338,8 @@ defmodule PgdSupervisorTest do
     end
 
     test "child is restarted with different values" do
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, max_restarts: 100_000)
+      opts = [strategy: :one_for_one, max_restarts: 100_000, scope: :test]
+      {:ok, pid} = PgdSupervisor.start_link(opts)
 
       assert {:ok, child1} =
                PgdSupervisor.start_child(pid, current_module_worker([:restart, :ok2]))
@@ -388,7 +401,7 @@ defmodule PgdSupervisorTest do
 
     test "restarting on init children counted in max_children" do
       child = current_module_worker([:restart, :error], restart: :permanent)
-      opts = [strategy: :one_for_one, max_children: 1, max_restarts: 100_000]
+      opts = [strategy: :one_for_one, scope: :test, max_children: 1, max_restarts: 100_000]
       {:ok, pid} = PgdSupervisor.start_link(opts)
 
       assert {:ok, child_pid} = PgdSupervisor.start_child(pid, child)
@@ -401,7 +414,7 @@ defmodule PgdSupervisorTest do
 
     test "restarting on exit children counted in max_children" do
       child = current_module_worker([:ok2], restart: :permanent)
-      opts = [strategy: :one_for_one, max_children: 1, max_restarts: 100_000]
+      opts = [strategy: :one_for_one, scope: :test, max_children: 1, max_restarts: 100_000]
       {:ok, pid} = PgdSupervisor.start_link(opts)
 
       assert {:ok, child_pid} = PgdSupervisor.start_child(pid, child)
@@ -420,7 +433,9 @@ defmodule PgdSupervisorTest do
         Process.sleep(:infinity)
       end
 
-      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one, extra_arguments: [fun])
+      {:ok, sup} =
+        PgdSupervisor.start_link(strategy: :one_for_one, scope: :test, extra_arguments: [fun])
+
       child = %{id: Task, restart: :transient, start: {Task, :start_link, []}}
 
       assert {:ok, child} = PgdSupervisor.start_child(sup, child)
@@ -434,7 +449,7 @@ defmodule PgdSupervisorTest do
 
     test "child is restarted when trying again" do
       child = current_module_worker([:try_again, self()], restart: :permanent)
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, max_restarts: 2)
+      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test, max_restarts: 2)
 
       assert {:ok, child_pid} = PgdSupervisor.start_child(pid, child)
       assert_received {:try_again, true}
@@ -447,7 +462,7 @@ defmodule PgdSupervisorTest do
     test "child triggers maximum restarts" do
       Process.flag(:trap_exit, true)
       child = current_module_worker([:restart, :error], restart: :permanent)
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, max_restarts: 1)
+      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test, max_restarts: 1)
 
       assert {:ok, child_pid} = PgdSupervisor.start_child(pid, child)
       assert_kill(child_pid, :shutdown)
@@ -457,7 +472,9 @@ defmodule PgdSupervisorTest do
     test "child triggers maximum intensity when trying again" do
       Process.flag(:trap_exit, true)
       child = current_module_worker([:restart, :error], restart: :permanent)
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, max_restarts: 10)
+
+      {:ok, pid} =
+        PgdSupervisor.start_link(strategy: :one_for_one, scope: :test, max_restarts: 10)
 
       assert {:ok, child_pid} = PgdSupervisor.start_child(pid, child)
       assert_kill(child_pid, :shutdown)
@@ -467,7 +484,7 @@ defmodule PgdSupervisorTest do
     test "with valid shutdown" do
       Process.flag(:trap_exit, true)
 
-      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
 
       for n <- 0..1 do
         assert {:ok, child_pid} =
@@ -524,7 +541,7 @@ defmodule PgdSupervisorTest do
   describe "terminate/2" do
     test "terminates children with brutal kill" do
       Process.flag(:trap_exit, true)
-      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
 
       child = sleepy_worker(shutdown: :brutal_kill)
       assert {:ok, child1} = PgdSupervisor.start_child(sup, child)
@@ -542,7 +559,7 @@ defmodule PgdSupervisorTest do
 
     test "terminates children with infinity shutdown" do
       Process.flag(:trap_exit, true)
-      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
 
       child = sleepy_worker(shutdown: :infinity)
       assert {:ok, child1} = PgdSupervisor.start_child(sup, child)
@@ -560,7 +577,7 @@ defmodule PgdSupervisorTest do
 
     test "terminates children with infinity shutdown and abnormal reason" do
       Process.flag(:trap_exit, true)
-      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
       parent = self()
 
       fun = fn ->
@@ -590,7 +607,7 @@ defmodule PgdSupervisorTest do
 
     test "terminates children with integer shutdown" do
       Process.flag(:trap_exit, true)
-      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
 
       child = sleepy_worker(shutdown: 1000)
       assert {:ok, child1} = PgdSupervisor.start_child(sup, child)
@@ -608,7 +625,7 @@ defmodule PgdSupervisorTest do
 
     test "terminates children with integer shutdown and abnormal reason" do
       Process.flag(:trap_exit, true)
-      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
       parent = self()
 
       fun = fn ->
@@ -638,7 +655,7 @@ defmodule PgdSupervisorTest do
 
     test "terminates children with expired integer shutdown" do
       Process.flag(:trap_exit, true)
-      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
       parent = self()
 
       fun = fn ->
@@ -670,7 +687,7 @@ defmodule PgdSupervisorTest do
 
     test "terminates children with permanent restart and normal reason" do
       Process.flag(:trap_exit, true)
-      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
       parent = self()
 
       fun = fn ->
@@ -699,7 +716,7 @@ defmodule PgdSupervisorTest do
 
     test "terminates with mixed children" do
       Process.flag(:trap_exit, true)
-      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
 
       assert {:ok, child1} = PgdSupervisor.start_child(sup, sleepy_worker(shutdown: :infinity))
 
@@ -715,7 +732,7 @@ defmodule PgdSupervisorTest do
 
   describe "terminate_child/2" do
     test "terminates child with brutal kill" do
-      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
 
       child = sleepy_worker(shutdown: :brutal_kill)
       assert {:ok, child_pid} = PgdSupervisor.start_child(sup, child)
@@ -729,7 +746,7 @@ defmodule PgdSupervisorTest do
     end
 
     test "terminates child with integer shutdown" do
-      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one)
+      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one, scope: :test)
 
       child = sleepy_worker(shutdown: 1000)
       assert {:ok, child_pid} = PgdSupervisor.start_child(sup, child)
@@ -743,7 +760,8 @@ defmodule PgdSupervisorTest do
     end
 
     test "terminates restarting child" do
-      {:ok, sup} = PgdSupervisor.start_link(strategy: :one_for_one, max_restarts: 100_000)
+      opts = [strategy: :one_for_one, max_restarts: 100_000, scope: :test]
+      {:ok, sup} = PgdSupervisor.start_link(opts)
 
       child = current_module_worker([:restart, :error], restart: :permanent)
       assert {:ok, child_pid} = PgdSupervisor.start_child(sup, child)

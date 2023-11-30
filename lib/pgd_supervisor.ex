@@ -189,6 +189,7 @@ defmodule PgdSupervisor do
     :max_children,
     :max_restarts,
     :max_seconds,
+    :scope,
     children: %{},
     restarts: []
   ]
@@ -264,6 +265,10 @@ defmodule PgdSupervisor do
 
   ## Options
 
+    * `:scope` - scope (`:pg` scope) under which other PgdSupervisor instances
+      are grouped in the cluster. For different PgdSupervisor clusters, use
+      different scopes.
+
     * `:name` - registers the supervisor under the given name.
       The supported values are described under the "Name registration"
       section in the `GenServer` module docs.
@@ -292,7 +297,7 @@ defmodule PgdSupervisor do
   @doc since: "1.6.0"
   @spec start_link([option | init_option]) :: Supervisor.on_start()
   def start_link(options) when is_list(options) do
-    keys = [:extra_arguments, :max_children, :max_seconds, :max_restarts, :strategy]
+    keys = [:extra_arguments, :max_children, :max_seconds, :max_restarts, :strategy, :scope]
     {sup_opts, start_opts} = Keyword.split(options, keys)
     start_link(Supervisor.Default, init(sup_opts), start_opts)
   end
@@ -550,12 +555,18 @@ defmodule PgdSupervisor do
     period = Keyword.get(options, :max_seconds, 5)
     max_children = Keyword.get(options, :max_children, :infinity)
     extra_arguments = Keyword.get(options, :extra_arguments, [])
+    scope = Keyword.get(options, :scope)
+
+    if scope == nil do
+      raise ArgumentError, message: "Missing mandatory scope value"
+    end
 
     flags = %{
       strategy: strategy,
       intensity: intensity,
       period: period,
       max_children: max_children,
+      scope: scope,
       extra_arguments: extra_arguments
     }
 
@@ -581,8 +592,24 @@ defmodule PgdSupervisor do
         state = %PgdSupervisor{mod: mod, args: init_arg, name: name}
 
         case init(state, flags) do
-          {:ok, state} -> {:ok, state}
-          {:error, reason} -> {:stop, {:supervisor_data, reason}}
+          {:ok, state} ->
+            case :pg.start_link(state.scope) do
+              {:ok, _scope_pid} ->
+                :pg.join(state.scope, {:member, Node.self()}, self())
+
+                {:ok, state}
+
+              {:error, {:already_started, _scope_pid}} ->
+                :pg.join(state.scope, {:member, Node.self()}, self())
+
+                {:ok, state}
+
+              reason ->
+                {:stop, {:pg_start_scope, reason}}
+            end
+
+          {:error, reason} ->
+            {:stop, {:supervisor_data, reason}}
         end
 
       :ignore ->
@@ -600,13 +627,15 @@ defmodule PgdSupervisor do
     max_seconds = Map.get(flags, :period, 5)
     strategy = Map.get(flags, :strategy, :one_for_one)
     auto_shutdown = Map.get(flags, :auto_shutdown, :never)
+    scope = Map.get(flags, :scope)
 
     with :ok <- validate_strategy(strategy),
          :ok <- validate_restarts(max_restarts),
          :ok <- validate_seconds(max_seconds),
          :ok <- validate_dynamic(max_children),
          :ok <- validate_extra_arguments(extra_arguments),
-         :ok <- validate_auto_shutdown(auto_shutdown) do
+         :ok <- validate_auto_shutdown(auto_shutdown),
+         :ok <- validate_scope(scope) do
       {:ok,
        %{
          state
@@ -614,7 +643,8 @@ defmodule PgdSupervisor do
            max_children: max_children,
            max_restarts: max_restarts,
            max_seconds: max_seconds,
-           strategy: strategy
+           strategy: strategy,
+           scope: scope
        }}
     end
   end
@@ -639,6 +669,9 @@ defmodule PgdSupervisor do
 
   defp validate_auto_shutdown(auto_shutdown),
     do: {:error, {:invalid_auto_shutdown, auto_shutdown}}
+
+  defp validate_scope(scope) when is_atom(scope), do: :ok
+  defp validate_scope(scope), do: {:error, {:invalid_scope, scope}}
 
   @impl true
   def handle_call(:which_children, _from, state) do
