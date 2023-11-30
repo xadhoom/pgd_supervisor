@@ -740,7 +740,18 @@ defmodule PgdSupervisor do
     end
   end
 
-  defp handle_start_child({{m, f, args} = mfa, restart, shutdown, type, modules}, state) do
+  defp handle_start_child({_mfa, _restart, _shutdown, _type, _modules} = child, state) do
+    ring = node_ring(state.scope)
+    {assigned_node, assigned_supervisor} = assign_child(state.scope, child, ring)
+
+    if assigned_supervisor == self() do
+      start_local_child(child, state)
+    else
+      start_remote_child(child, {assigned_node, assigned_supervisor}, state)
+    end
+  end
+
+  defp start_local_child({{m, f, args} = mfa, restart, shutdown, type, modules}, state) do
     %{extra_arguments: extra} = state
 
     case reply = start_child(m, f, extra ++ args) do
@@ -753,6 +764,10 @@ defmodule PgdSupervisor do
       _ ->
         {:reply, reply, state}
     end
+  end
+
+  defp start_remote_child(_child, {_node, _sup}, _state) do
+    raise RuntimeError, message: "Not implemented"
   end
 
   defp start_child(m, f, a) do
@@ -1099,6 +1114,28 @@ defmodule PgdSupervisor do
       shutdown: shutdown,
       child_type: type
     ]
+  end
+
+  defp node_ring(scope) do
+    groups = :pg.which_groups(scope)
+
+    # build a consistent hash ring of existing nodes to distribute
+    # child processes among them
+    for {:member, node} <- groups, reduce: HashRing.new() do
+      acc -> HashRing.add_node(acc, node)
+    end
+  end
+
+  defp assign_child(scope, id, ring) do
+    assigned_node = HashRing.key_to_node(ring, id)
+
+    assigned_supervisor =
+      case :pg.get_members(scope, {:member, assigned_node}) do
+        [supervisor | _] -> supervisor
+        _ -> nil
+      end
+
+    {assigned_node, assigned_supervisor}
   end
 
   @impl true
