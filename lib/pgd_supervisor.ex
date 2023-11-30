@@ -593,20 +593,9 @@ defmodule PgdSupervisor do
 
         case init(state, flags) do
           {:ok, state} ->
-            case :pg.start_link(state.scope) do
-              {:ok, _scope_pid} ->
-                :pg.join(state.scope, {:member, Node.self()}, self())
-
-                {:ok, state}
-
-              {:error, {:already_started, _scope_pid}} ->
-                :pg.join(state.scope, {:member, Node.self()}, self())
-
-                {:ok, state}
-
-              reason ->
-                {:stop, {:pg_start_scope, reason}}
-            end
+            :pg.start_link(state.scope)
+            :pg.join(state.scope, {:member, Node.self()}, self())
+            {:ok, state}
 
           {:error, reason} ->
             {:stop, {:supervisor_data, reason}}
