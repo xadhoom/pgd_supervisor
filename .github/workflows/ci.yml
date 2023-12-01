@@ -1,0 +1,27 @@
+on: [push, pull_request]
+
+env:
+  MIX_ENV: test
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    name: PgdSupervisor on Elixir ${{matrix.elixir}} (OTP ${{matrix.otp}})
+    strategy:
+      matrix:
+        otp: ['24.3', '25.2', '26.1']
+        elixir: ['1.14.5', '1.15.7']
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{matrix.otp}}
+          elixir-version: ${{matrix.elixir}}
+      - run: epmd -daemon
+      - run: mix deps.get
+      - run: mix compile --warnings-as-errors
+      - run: mix format --check-formatted --dry-run
+      # - run: mix credo --strict -a
+      - run: mix test --warnings-as-errors
+      # - run: mix dialyzer
