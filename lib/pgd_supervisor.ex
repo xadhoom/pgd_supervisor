@@ -139,6 +139,8 @@ defmodule PgdSupervisor do
 
   """
 
+  alias PgdSupervisor.Distribution
+
   @behaviour GenServer
 
   @doc """
@@ -593,19 +595,12 @@ defmodule PgdSupervisor do
 
         case init(state, flags) do
           {:ok, state} ->
-            case :pg.start_link(state.scope) do
+            case Distribution.start_link_and_join(state.scope) do
               {:ok, _scope_pid} ->
-                :pg.join(state.scope, {:member, Node.self()}, self())
-
                 {:ok, state}
 
-              {:error, {:already_started, _scope_pid}} ->
-                :pg.join(state.scope, {:member, Node.self()}, self())
-
-                {:ok, state}
-
-              reason ->
-                {:stop, {:pg_start_scope, reason}}
+              {:error, reason} ->
+                {:stop, {:distribution_start, reason}}
             end
 
           {:error, reason} ->
@@ -752,8 +747,7 @@ defmodule PgdSupervisor do
   end
 
   defp handle_start_child({_mfa, _restart, _shutdown, _type, _modules} = child, state) do
-    ring = node_ring(state.scope)
-    {assigned_node, assigned_supervisor} = assign_child(state.scope, child, ring)
+    {assigned_node, assigned_supervisor} = assign_child(state.scope, child)
 
     if assigned_supervisor == self() do
       start_local_child(child, state)
@@ -1141,18 +1135,8 @@ defmodule PgdSupervisor do
     ]
   end
 
-  defp node_ring(scope) do
-    groups = :pg.which_groups(scope)
-
-    # build a consistent hash ring of existing nodes to distribute
-    # child processes among them
-    for {:member, node} <- groups, reduce: HashRing.new() do
-      acc -> HashRing.add_node(acc, node)
-    end
-  end
-
-  defp assign_child(scope, id, ring) do
-    assigned_node = HashRing.key_to_node(ring, id)
+  defp assign_child(scope, id) do
+    assigned_node = Distribution.node_for_resource(scope, id)
 
     assigned_supervisor =
       case :pg.get_members(scope, {:member, assigned_node}) do
