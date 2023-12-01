@@ -28,22 +28,11 @@ defmodule PgdSupervisor.Distribution do
     end
   end
 
-  @spec node_ring(scope_t()) :: HashRing.t()
-  def node_ring(scope) do
-    groups = :pg.which_groups(scope)
-
-    # build a consistent hash ring of existing nodes to distribute
-    # child processes among them
-    for {:member, node} <- groups, reduce: HashRing.new() do
-      acc -> HashRing.add_node(acc, node)
-    end
-  end
-
-  @spec node_for_resource(scope :: scope_t(), id :: any()) :: Node.t()
-  def node_for_resource(scope, id) do
+  @spec node_for_resource(scope :: scope_t(), resource_id :: any()) :: Node.t()
+  def node_for_resource(scope, resource_id) do
     scope
-    |> node_ring()
-    |> HashRing.key_to_node(id)
+    |> create_ring()
+    |> HashRing.key_to_node(resource_id)
   end
 
   @spec member_for_node(scope_t(), Node.t()) :: nil | pid()
@@ -51,6 +40,23 @@ defmodule PgdSupervisor.Distribution do
     case :pg.get_members(scope, member_group(node)) do
       [member | _] -> member
       _ -> nil
+    end
+  end
+
+  @spec member_for_resource(scope :: scope_t(), resource_id :: any()) :: {Node.t(), nil | pid()}
+  def member_for_resource(scope, resource_id) do
+    node = node_for_resource(scope, resource_id)
+    {node, member_for_node(scope, node)}
+  end
+
+  @spec create_ring(scope_t()) :: HashRing.t()
+  defp create_ring(scope) do
+    groups = :pg.which_groups(scope)
+
+    # build a consistent hash ring of existing nodes to distribute
+    # child processes among them
+    for {:member, node} <- groups, reduce: HashRing.new() do
+      acc -> HashRing.add_node(acc, node)
     end
   end
 

@@ -747,12 +747,12 @@ defmodule PgdSupervisor do
   end
 
   defp handle_start_child({_mfa, _restart, _shutdown, _type, _modules} = child, state) do
-    {assigned_node, assigned_supervisor} = assign_child(state.scope, child)
+    {assigned_node, assigned_supervisor} = Distribution.member_for_resource(state.scope, child)
 
-    if assigned_supervisor == self() do
-      start_local_child(child, state)
-    else
-      start_remote_child(child, {assigned_node, assigned_supervisor}, state)
+    case assigned_supervisor do
+      nil -> {:reply, {:error, :remote_supervisor_not_found}, state}
+      pid when pid == self() -> start_local_child(child, state)
+      _ -> start_remote_child(child, {assigned_node, assigned_supervisor}, state)
     end
   end
 
@@ -1133,13 +1133,6 @@ defmodule PgdSupervisor do
       shutdown: shutdown,
       child_type: type
     ]
-  end
-
-  defp assign_child(scope, id) do
-    assigned_node = Distribution.node_for_resource(scope, id)
-    assigned_supervisor = Distribution.member_for_node(scope, assigned_node)
-
-    {assigned_node, assigned_supervisor}
   end
 
   @impl true
