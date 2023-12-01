@@ -762,7 +762,8 @@ defmodule PgdSupervisor do
     end
   end
 
-  defp start_local_child({{m, f, args} = mfa, restart, shutdown, type, modules}, state) do
+  @doc false
+  def start_local_child({{m, f, args} = mfa, restart, shutdown, type, modules}, state) do
     %{extra_arguments: extra} = state
 
     case reply = start_child(m, f, extra ++ args) do
@@ -777,8 +778,13 @@ defmodule PgdSupervisor do
     end
   end
 
-  defp start_remote_child(_child, {_node, _sup}, _state) do
-    raise RuntimeError, message: "Not implemented"
+  defp start_remote_child({{m, f, a}, _restart, _shutdown, _type, _modules}, {node, _sup}, state) do
+    %{extra_arguments: extra} = state
+
+    case :rpc.call(node, m, f, extra ++ a, 5_000) do
+      {:badrpc, _reason} = err -> {:reply, err, state}
+      res -> {:reply, res, state}
+    end
   end
 
   defp start_child(m, f, a) do
