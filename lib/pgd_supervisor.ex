@@ -1137,12 +1137,7 @@ defmodule PgdSupervisor do
 
   defp assign_child(scope, id) do
     assigned_node = Distribution.node_for_resource(scope, id)
-
-    assigned_supervisor =
-      case :pg.get_members(scope, {:member, assigned_node}) do
-        [supervisor | _] -> supervisor
-        _ -> nil
-      end
+    assigned_supervisor = Distribution.member_for_node(scope, assigned_node)
 
     {assigned_node, assigned_supervisor}
   end

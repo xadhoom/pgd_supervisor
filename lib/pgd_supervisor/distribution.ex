@@ -16,11 +16,11 @@ defmodule PgdSupervisor.Distribution do
   def start_link_and_join(scope) do
     case start_link(scope) do
       {:ok, pid} ->
-        :pg.join(scope, member_group(), self())
+        :pg.join(scope, member_group(Node.self()), self())
         {:ok, pid}
 
       {:error, {:already_started, pid}} ->
-        :pg.join(scope, member_group(), self())
+        :pg.join(scope, member_group(Node.self()), self())
         {:ok, pid}
 
       err ->
@@ -46,7 +46,15 @@ defmodule PgdSupervisor.Distribution do
     |> HashRing.key_to_node(id)
   end
 
-  defp member_group do
-    {:member, Node.self()}
+  @spec member_for_node(scope_t(), Node.t()) :: nil | pid()
+  def member_for_node(scope, node) do
+    case :pg.get_members(scope, member_group(node)) do
+      [member | _] -> member
+      _ -> nil
+    end
+  end
+
+  defp member_group(node) do
+    {:member, node}
   end
 end
