@@ -762,8 +762,7 @@ defmodule PgdSupervisor do
     end
   end
 
-  @doc false
-  def start_local_child({{m, f, args} = mfa, restart, shutdown, type, modules}, state) do
+  defp start_local_child({{m, f, args} = mfa, restart, shutdown, type, modules}, state) do
     %{extra_arguments: extra} = state
 
     case reply = start_child(m, f, extra ++ args) do
@@ -778,10 +777,19 @@ defmodule PgdSupervisor do
     end
   end
 
-  defp start_remote_child({{m, f, a}, _restart, _shutdown, _type, _modules}, {node, _sup}, state) do
-    %{extra_arguments: extra} = state
+  defp start_remote_child(child, {node, assigned_sup}, state) do
+    {start, restart, shutdown, type, modules} = child
 
-    case :rpc.call(node, m, f, extra ++ a, 5_000) do
+    child = %{
+      id: :ignored,
+      start: start,
+      restart: restart,
+      shutdown: shutdown,
+      type: type,
+      modules: modules
+    }
+
+    case :rpc.call(node, __MODULE__, :start_child, [assigned_sup, child], 5_000) do
       {:badrpc, _reason} = err -> {:reply, err, state}
       res -> {:reply, res, state}
     end
