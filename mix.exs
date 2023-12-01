@@ -36,7 +36,8 @@ defmodule PgdSupervisor.MixProject do
       {:local_cluster, "~> 1.2", only: [:test]},
       {:ex_doc, "~> 0.30", only: [:dev], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:test_app, path: "test_helpers/test_app", only: [:test]}
     ]
   end
 end
