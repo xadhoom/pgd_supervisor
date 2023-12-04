@@ -192,6 +192,7 @@ defmodule PgdSupervisor do
     :max_restarts,
     :max_seconds,
     :scope,
+    :sync_interval,
     children: %{},
     restarts: []
   ]
@@ -271,6 +272,10 @@ defmodule PgdSupervisor do
       are grouped in the cluster. For different PgdSupervisor clusters, use
       different scopes.
 
+    * `:sync_interval` - interval in milliseconds, how often the supervisor
+      should synchronize its local state with the cluster by processing.
+      Optional, defaults to `3_000`
+
     * `:name` - registers the supervisor under the given name.
       The supported values are described under the "Name registration"
       section in the `GenServer` module docs.
@@ -299,7 +304,16 @@ defmodule PgdSupervisor do
   @doc since: "1.6.0"
   @spec start_link([option | init_option]) :: Supervisor.on_start()
   def start_link(options) when is_list(options) do
-    keys = [:extra_arguments, :max_children, :max_seconds, :max_restarts, :strategy, :scope]
+    keys = [
+      :extra_arguments,
+      :max_children,
+      :max_seconds,
+      :max_restarts,
+      :strategy,
+      :scope,
+      :sync_interval
+    ]
+
     {sup_opts, start_opts} = Keyword.split(options, keys)
     start_link(Supervisor.Default, init(sup_opts), start_opts)
   end
@@ -558,6 +572,7 @@ defmodule PgdSupervisor do
     max_children = Keyword.get(options, :max_children, :infinity)
     extra_arguments = Keyword.get(options, :extra_arguments, [])
     scope = Keyword.get(options, :scope)
+    sync_interval = Keyword.get(options, :sync_interval, 3_000)
 
     if scope == nil do
       raise ArgumentError, message: "Missing mandatory scope value"
@@ -569,6 +584,7 @@ defmodule PgdSupervisor do
       period: period,
       max_children: max_children,
       scope: scope,
+      sync_interval: sync_interval,
       extra_arguments: extra_arguments
     }
 
@@ -623,6 +639,7 @@ defmodule PgdSupervisor do
     strategy = Map.get(flags, :strategy, :one_for_one)
     auto_shutdown = Map.get(flags, :auto_shutdown, :never)
     scope = Map.get(flags, :scope)
+    sync_interval = Map.get(flags, :sync_interval, 3_000)
 
     with :ok <- validate_strategy(strategy),
          :ok <- validate_restarts(max_restarts),
@@ -630,7 +647,8 @@ defmodule PgdSupervisor do
          :ok <- validate_dynamic(max_children),
          :ok <- validate_extra_arguments(extra_arguments),
          :ok <- validate_auto_shutdown(auto_shutdown),
-         :ok <- validate_scope(scope) do
+         :ok <- validate_scope(scope),
+         :ok <- validate_sync_interval(sync_interval) do
       {:ok,
        %{
          state
@@ -639,7 +657,8 @@ defmodule PgdSupervisor do
            max_restarts: max_restarts,
            max_seconds: max_seconds,
            strategy: strategy,
-           scope: scope
+           scope: scope,
+           sync_interval: sync_interval
        }}
     end
   end
@@ -667,6 +686,9 @@ defmodule PgdSupervisor do
 
   defp validate_scope(scope) when is_atom(scope), do: :ok
   defp validate_scope(scope), do: {:error, {:invalid_scope, scope}}
+
+  defp validate_sync_interval(interval) when is_integer(interval) and interval > 0, do: :ok
+  defp validate_sync_interval(interval), do: {:error, {:invalid_sync_interval, interval}}
 
   @impl true
   def handle_call(:which_children, _from, state) do
