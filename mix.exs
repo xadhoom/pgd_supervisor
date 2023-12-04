@@ -11,6 +11,12 @@ defmodule PgdSupervisor.MixProject do
       # elixirc_options: [warnings_as_errors: true],
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      package: package(),
+      source_url: "https://github.com/VoiSmart/pgd_supervisor.git",
+      homepage_url: "https://github.com/VoiSmart/pgd_supervisor.git",
+      description: description(),
+      name: "PgdSupervisor",
+      docs: docs(),
       aliases: aliases()
     ]
   end
@@ -29,6 +35,31 @@ defmodule PgdSupervisor.MixProject do
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
+
+  defp description do
+    """
+    A dynamic, distributed supervisor for clustered Elixir applications.
+    """
+  end
+
+  defp package do
+    [
+      maintainers: [
+        "Flavio Grossi <flavio.grossi@voismart.it>",
+        "Matteo Brancaleoni <matteo.brancaleoni@voismart.it>"
+      ],
+      licenses: ["LGPL-3.0-only"],
+      links: %{"GitHub" => "https://github.com/VoiSmart/pgd_supervisor.git"},
+      files: ~w"lib mix.exs README.md LICENSE"
+    ]
+  end
+
+  defp docs do
+    [
+      main: "readme",
+      extras: ["README.md", "LICENSE"]
+    ]
+  end
 
   defp deps do
     [

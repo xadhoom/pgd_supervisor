@@ -1,6 +1,6 @@
 # PgdSupervisor
 
-**TODO: Add description**
+**A PG-based, Distributed, Dynamic Supervisor**
 
 ## Installation
 
@@ -10,12 +10,22 @@ by adding `pgd_supervisor` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:pgd_supervisor, "~> 0.1.0"}
+    {:pgd_supervisor, "~> 0.1"}
   ]
 end
 ```
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at <https://hexdocs.pm/pgd_supervisor>.
+## Documentation
+
+For the full documentation, head to [ExDoc](https://hexdocs.pm/pgd_supervisor).
+
+## Acknowledgments
+
+A lot of inspiration, and some code snippets are taken from [Pogo](https://github.com/team-telnyx/pogo).
+Also the original source code of [Elixir DynamicSupervisor](https://hexdocs.pm/elixir/DynamicSupervisor.html)
+has been used as starting point for this project.
+
+## License
+
+GNU Lesser General Public License v3.0, see [`LICENSE`](LICENSE) for details.
 
