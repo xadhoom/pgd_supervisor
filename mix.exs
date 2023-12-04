@@ -50,14 +50,14 @@ defmodule PgdSupervisor.MixProject do
       ],
       licenses: ["LGPL-3.0-only"],
       links: %{"GitHub" => "https://github.com/VoiSmart/pgd_supervisor.git"},
-      files: ~w"lib mix.exs README.md LICENSE"
+      files: ~w"lib mix.exs README.md LICENSE.md"
     ]
   end
 
   defp docs do
     [
       main: "readme",
-      extras: ["README.md", "LICENSE"]
+      extras: ["README.md", "LICENSE.md"]
     ]
   end
 

@@ -27,5 +27,5 @@ has been used as starting point for this project.
 
 ## License
 
-GNU Lesser General Public License v3.0, see [`LICENSE`](LICENSE) for details.
+GNU Lesser General Public License v3.0, see [`LICENSE`](LICENSE.md) for details.
 
