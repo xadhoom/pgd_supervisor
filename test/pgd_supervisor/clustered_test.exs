@@ -83,6 +83,38 @@ defmodule PgdSupervisor.ClusteredTest do
     end
   end
 
+  test "restart process on another node when the node it was scheduled on goes down" do
+    [node1, node2, node3] = start_nodes(:test_app, "foo", 3)
+
+    child_spec_1 = Worker.child_spec(10)
+    child_spec_2 = Worker.child_spec(20)
+    child_spec_3 = Worker.child_spec(30)
+
+    {:ok, pid1} = start_child(node1, child_spec_1)
+    {:ok, pid2} = start_child(node1, child_spec_2)
+    {:ok, pid3} = start_child(node1, child_spec_3)
+
+    assert_async do
+      assert %{
+               ^node1 => [{:undefined, ^pid1, :worker, [Worker]}],
+               ^node2 => [{:undefined, ^pid3, :worker, [Worker]}],
+               ^node3 => [{:undefined, ^pid2, :worker, [Worker]}]
+             } = local_children([node1, node2, node3])
+    end
+
+    stop_nodes([node3])
+
+    assert_async do
+      assert %{
+               ^node1 => [{:undefined, ^pid1, :worker, [Worker]}],
+               ^node2 => [
+                 {:undefined, _new_pid2, :worker, [Worker]},
+                 {:undefined, ^pid3, :worker, [Worker]}
+               ]
+             } = local_children([node1, node2])
+    end
+  end
+
   describe "which_children/1" do
     test "returns children running on the local node" do
       [node1, node2] = start_nodes(:test_app, "foo", 2)
@@ -238,5 +270,9 @@ defmodule PgdSupervisor.ClusteredTest do
       applications: [app],
       files: ["test/support/pgd_supervisor/worker.ex"]
     )
+  end
+
+  defp stop_nodes(nodes) do
+    LocalCluster.stop_nodes(nodes)
   end
 end
