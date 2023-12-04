@@ -502,6 +502,18 @@ defmodule PgdSupervisor do
     call(supervisor, :which_children)
   end
 
+  @spec which_children(Supervisor.supervisor(), :local | :global) :: [
+          # module() | :dynamic here because :supervisor.modules() is not exported
+          {:undefined, pid | :restarting, :worker | :supervisor, [module()] | :dynamic}
+        ]
+  def which_children(supervisor, :local) do
+    call(supervisor, :which_children)
+  end
+
+  def which_children(supervisor, :global) do
+    call(supervisor, {:which_children, :global})
+  end
+
   @doc """
   Returns a map containing count values for the supervisor.
 
@@ -528,6 +540,20 @@ defmodule PgdSupervisor do
         }
   def count_children(supervisor) do
     call(supervisor, :count_children) |> :maps.from_list()
+  end
+
+  @spec count_children(Supervisor.supervisor(), :local | :global) :: %{
+          specs: non_neg_integer,
+          active: non_neg_integer,
+          supervisors: non_neg_integer,
+          workers: non_neg_integer
+        }
+  def count_children(supervisor, :local) do
+    call(supervisor, :count_children) |> :maps.from_list()
+  end
+
+  def count_children(supervisor, :global) do
+    call(supervisor, {:count_children, :global}) |> :maps.from_list()
   end
 
   @doc """
@@ -708,6 +734,10 @@ defmodule PgdSupervisor do
     {:reply, reply, state}
   end
 
+  def handle_call({:which_children, :global}, _from, state) do
+    {:reply, {:error, :not_implemented}, state}
+  end
+
   def handle_call(:count_children, _from, state) do
     %{children: children} = state
     specs = map_size(children)
@@ -729,6 +759,10 @@ defmodule PgdSupervisor do
 
     reply = [specs: specs, active: active, supervisors: supervisors, workers: workers]
     {:reply, reply, state}
+  end
+
+  def handle_call({:count_children, :global}, _from, state) do
+    {:reply, {:error, :not_implemented}, state}
   end
 
   def handle_call({:terminate_child, pid}, _from, %{children: _children} = state) do

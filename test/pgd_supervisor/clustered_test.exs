@@ -83,6 +83,144 @@ defmodule PgdSupervisor.ClusteredTest do
     end
   end
 
+  describe "which_children/1" do
+    test "returns children running on the local node" do
+      [node1, node2] = start_nodes(:test_app, "foo", 2)
+
+      child_spec_1 = Worker.child_spec(:init_args_1)
+      child_spec_2 = Worker.child_spec(:init_args_2)
+
+      {:ok, pid1} = start_child(node1, child_spec_1)
+      {:ok, pid2} = start_child(node2, child_spec_2)
+
+      assert_async do
+        assert [{:undefined, ^pid2, :worker, [Worker]}] =
+                 :rpc.call(node1, PgdSupervisor, :which_children, [@supervisor])
+      end
+
+      assert_async do
+        assert [{:undefined, ^pid1, :worker, [Worker]}] =
+                 :rpc.call(node2, PgdSupervisor, :which_children, [@supervisor])
+      end
+    end
+  end
+
+  describe "which_children/2" do
+    test "returns children running on the node when called with :local" do
+      [node1, node2] = start_nodes(:test_app, "foo", 2)
+
+      child_spec_1 = Worker.child_spec(:init_args_1)
+      child_spec_2 = Worker.child_spec(:init_args_2)
+
+      {:ok, pid1} = start_child(node1, child_spec_1)
+      {:ok, pid2} = start_child(node2, child_spec_2)
+
+      assert_async do
+        assert [{:undefined, ^pid2, :worker, [Worker]}] =
+                 :rpc.call(node1, PgdSupervisor, :which_children, [@supervisor, :local])
+      end
+
+      assert_async do
+        assert [{:undefined, ^pid1, :worker, [Worker]}] =
+                 :rpc.call(node2, PgdSupervisor, :which_children, [@supervisor, :local])
+      end
+    end
+
+    test "returns all children running on the node when called with :global" do
+      [node1, node2] = start_nodes(:test_app, "foo", 2)
+
+      child_spec_1 = Worker.child_spec(:init_args_1)
+      child_spec_2 = Worker.child_spec(:init_args_2)
+
+      {:ok, pid1} = start_child(node1, child_spec_1)
+      {:ok, pid2} = start_child(node2, child_spec_2)
+
+      assert_async do
+        assert [
+                 {:undefined, wpid1, :worker, [Worker]},
+                 {:undefined, wpid2, :worker, [Worker]}
+               ] = :rpc.call(node1, PgdSupervisor, :which_children, [@supervisor, :global])
+
+        assert pid1 in [wpid1, wpid2]
+        assert pid2 in [wpid1, wpid2]
+      end
+
+      assert_async do
+        assert [
+                 {:undefined, wpid1, :worker, [Worker]},
+                 {:undefined, wpid2, :worker, [Worker]}
+               ] = :rpc.call(node2, PgdSupervisor, :which_children, [@supervisor, :global])
+
+        assert pid1 in [wpid1, wpid2]
+        assert pid2 in [wpid1, wpid2]
+      end
+    end
+  end
+
+  describe "count_children/1" do
+    test "counts children running on the local node" do
+      [node1, node2] = start_nodes(:test_app, "foo", 2)
+
+      child_spec_1 = Worker.child_spec(:init_args_1)
+      child_spec_2 = Worker.child_spec(:init_args_2)
+
+      {:ok, _pid1} = start_child(node1, child_spec_1)
+      {:ok, _pid2} = start_child(node2, child_spec_2)
+
+      assert_async do
+        assert %{active: 1, specs: 1, supervisors: 0, workers: 1} =
+                 :rpc.call(node1, PgdSupervisor, :count_children, [@supervisor])
+      end
+
+      assert_async do
+        assert %{active: 1, specs: 1, supervisors: 0, workers: 1} =
+                 :rpc.call(node2, PgdSupervisor, :count_children, [@supervisor])
+      end
+    end
+  end
+
+  describe "count_children/2" do
+    test "counts children running on the local node when called with :local" do
+      [node1, node2] = start_nodes(:test_app, "foo", 2)
+
+      child_spec_1 = Worker.child_spec(:init_args_1)
+      child_spec_2 = Worker.child_spec(:init_args_2)
+
+      {:ok, _pid1} = start_child(node1, child_spec_1)
+      {:ok, _pid2} = start_child(node2, child_spec_2)
+
+      assert_async do
+        assert %{active: 1, specs: 1, supervisors: 0, workers: 1} =
+                 :rpc.call(node1, PgdSupervisor, :count_children, [@supervisor, :local])
+      end
+
+      assert_async do
+        assert %{active: 1, specs: 1, supervisors: 0, workers: 1} =
+                 :rpc.call(node2, PgdSupervisor, :count_children, [@supervisor, :local])
+      end
+    end
+
+    test "counts children running on all nodes when called with :global" do
+      [node1, node2] = start_nodes(:test_app, "foo", 2)
+
+      child_spec_1 = Worker.child_spec(:init_args_1)
+      child_spec_2 = Worker.child_spec(:init_args_2)
+
+      {:ok, _pid1} = start_child(node1, child_spec_1)
+      {:ok, _pid2} = start_child(node2, child_spec_2)
+
+      assert_async do
+        assert %{active: 2, specs: 2, supervisors: 0, workers: 2} =
+                 :rpc.call(node1, PgdSupervisor, :count_children, [@supervisor, :global])
+      end
+
+      assert_async do
+        assert %{active: 2, specs: 2, supervisors: 0, workers: 2} =
+                 :rpc.call(node2, PgdSupervisor, :count_children, [@supervisor, :global])
+      end
+    end
+  end
+
   defp start_child(node, child_spec) do
     :rpc.call(node, PgdSupervisor, :start_child, [@supervisor, child_spec])
   end
