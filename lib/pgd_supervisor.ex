@@ -731,14 +731,18 @@ defmodule PgdSupervisor do
     {:reply, reply, state}
   end
 
-  def handle_call({:terminate_child, pid}, _from, %{children: children} = state) do
-    case children do
-      %{^pid => info} ->
-        :ok = terminate_children(%{pid => info}, state)
-        {:reply, :ok, delete_child(pid, state)}
+  def handle_call({:terminate_child, pid}, _from, %{children: _children} = state) do
+    case Distribution.find_resource(state.scope, pid) do
+      {:error, :not_found} ->
+        # try local children anyway
+        terminate_local_children(pid, state)
 
-      %{} ->
-        {:reply, {:error, :not_found}, state}
+      {:ok, {node, supervisor}} ->
+        if node == Node.self() do
+          terminate_local_children(pid, state)
+        else
+          terminate_remote_children(node, supervisor, pid, state)
+        end
     end
   end
 
@@ -768,6 +772,24 @@ defmodule PgdSupervisor do
     end
   end
 
+  defp terminate_local_children(pid, %{children: children} = state) do
+    case children do
+      %{^pid => info} ->
+        :ok = terminate_children(%{pid => info}, state)
+        {:reply, :ok, delete_child(pid, state)}
+
+      %{} ->
+        {:reply, {:error, :not_found}, state}
+    end
+  end
+
+  defp terminate_remote_children(node, sup, pid, state) do
+    case :rpc.call(node, __MODULE__, :terminate_child, [sup, pid], 5_000) do
+      {:badrpc, _reason} = err -> {:reply, err, state}
+      res -> {:reply, res, state}
+    end
+  end
+
   defp handle_start_child({_mfa, _restart, _shutdown, _type, _modules} = child, state) do
     {assigned_node, assigned_supervisor} = Distribution.member_for_resource(state.scope, child)
 
@@ -783,9 +805,11 @@ defmodule PgdSupervisor do
 
     case reply = start_child(m, f, extra ++ args) do
       {:ok, pid, _} ->
+        Distribution.resource_join(state.scope, Node.self(), self(), pid)
         {:reply, reply, save_child(pid, mfa, restart, shutdown, type, modules, state)}
 
       {:ok, pid} ->
+        Distribution.resource_join(state.scope, Node.self(), self(), pid)
         {:reply, reply, save_child(pid, mfa, restart, shutdown, type, modules, state)}
 
       _ ->
@@ -806,8 +830,11 @@ defmodule PgdSupervisor do
     }
 
     case :rpc.call(node, __MODULE__, :start_child, [assigned_sup, child], 5_000) do
-      {:badrpc, _reason} = err -> {:reply, err, state}
-      res -> {:reply, res, state}
+      {:badrpc, _reason} = err ->
+        {:reply, err, state}
+
+      res ->
+        {:reply, res, state}
     end
   end
 

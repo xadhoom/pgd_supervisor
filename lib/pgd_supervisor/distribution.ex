@@ -28,6 +28,36 @@ defmodule PgdSupervisor.Distribution do
     end
   end
 
+  @spec resource_join(scope_t(), Node.t(), pid(), pid()) :: :ok
+  def resource_join(scope, node, supervisor, resource_pid) do
+    :pg.join(scope, resource_group(node, supervisor), resource_pid)
+  end
+
+  @spec find_resource(scope_t(), pid()) :: {:ok, {Node.t(), pid()}} | {:error, :not_found}
+  def find_resource(scope, pid) do
+    scope
+    |> resource_groups()
+    |> Enum.find_value(
+      {:error, :not_found},
+      fn
+        {:resource, {node, supervisor}} = group ->
+          if pid in :pg.get_members(scope, group), do: {:ok, {node, supervisor}}
+
+        _ ->
+          false
+      end
+    )
+  end
+
+  defp resource_groups(scope) do
+    scope
+    |> :pg.which_groups()
+    |> Enum.filter(fn
+      {:resource, _node} -> true
+      _ -> false
+    end)
+  end
+
   @spec node_for_resource(scope :: scope_t(), resource_id :: any()) :: Node.t()
   def node_for_resource(scope, resource_id) do
     scope
@@ -62,5 +92,9 @@ defmodule PgdSupervisor.Distribution do
 
   defp member_group(node) do
     {:member, node}
+  end
+
+  defp resource_group(node, supervisor) do
+    {:resource, {node, supervisor}}
   end
 end
