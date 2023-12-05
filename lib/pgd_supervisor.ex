@@ -157,7 +157,9 @@ defmodule PgdSupervisor do
           intensity: non_neg_integer(),
           period: pos_integer(),
           max_children: non_neg_integer() | :infinity,
-          extra_arguments: [term()]
+          extra_arguments: [term()],
+          sync_interval: non_neg_integer(),
+          scope: atom()
         }
 
   @typedoc "Options given to `start_link` functions"
@@ -170,6 +172,8 @@ defmodule PgdSupervisor do
           | {:max_seconds, pos_integer()}
           | {:max_children, non_neg_integer() | :infinity}
           | {:extra_arguments, [term()]}
+          | {:scope, atom()}
+          | {:sync_interval, non_neg_integer()}
 
   @typedoc "Supported strategies"
   @type strategy :: :one_for_one
