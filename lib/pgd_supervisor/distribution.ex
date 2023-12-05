@@ -3,9 +3,13 @@ defmodule PgdSupervisor.Distribution do
   Module to store and retrieve PgdSupervisor's distribution information
   """
 
+  alias PgdSupervisor.Distribution.Child
+
   @type scope_t() :: atom()
 
   @type group_t() :: any()
+
+  @type child_mapper_t :: (Child.t() -> any())
 
   @spec start_link(scope_t()) :: {:ok, pid()} | {:error, reason :: term()}
   def start_link(scope) do
@@ -28,20 +32,28 @@ defmodule PgdSupervisor.Distribution do
     end
   end
 
-  @spec resource_join(scope_t(), Node.t(), pid(), pid()) :: :ok
-  def resource_join(scope, node, supervisor, resource_pid) do
-    :pg.join(scope, resource_group(node, supervisor), resource_pid)
+  @spec child_join(scope_t(), Node.t(), pid(), pid(), Child.spec_t()) :: :ok
+  def child_join(scope, node, supervisor, child_pid, child_spec) do
+    child = %Child{
+      node: node,
+      pid: child_pid,
+      spec: child_spec,
+      supervisor_pid: supervisor
+    }
+
+    :pg.join(scope, child_group(child), child_pid)
+    track_spec(scope, child_spec)
   end
 
-  @spec find_resource(scope_t(), pid()) :: {:ok, {Node.t(), pid()}} | {:error, :not_found}
-  def find_resource(scope, pid) do
+  @spec find_child(scope_t(), pid()) :: {:ok, Child.t()} | {:error, :not_found}
+  def find_child(scope, pid) do
     scope
-    |> resource_groups()
+    |> child_groups()
     |> Enum.find_value(
       {:error, :not_found},
       fn
-        {:resource, {node, supervisor}} = group ->
-          if pid in :pg.get_members(scope, group), do: {:ok, {node, supervisor}}
+        {:child, %Child{pid: ^pid} = c} ->
+          c
 
         _ ->
           false
@@ -49,20 +61,32 @@ defmodule PgdSupervisor.Distribution do
     )
   end
 
-  defp resource_groups(scope) do
+  @spec map_children(scope_t(), (Child.t() -> arg)) :: list(arg) when arg: any
+  def map_children(scope, child_mapper_fun) do
     scope
-    |> :pg.which_groups()
-    |> Enum.filter(fn
-      {:resource, _node} -> true
-      _ -> false
-    end)
+    |> child_groups()
+    |> Enum.map(fn {:child, child} -> child_mapper_fun.(child) end)
   end
 
-  @spec node_for_resource(scope :: scope_t(), resource_id :: any()) :: Node.t()
-  def node_for_resource(scope, resource_id) do
+  @spec each_child(scope_t(), (Child.t() -> any())) :: :ok
+  def each_child(scope, fun) do
+    scope
+    |> child_groups()
+    |> Enum.each(fn {:child, child} -> fun.(child) end)
+  end
+
+  @spec reduce_child(scope_t(), acc, (Child.t(), acc -> acc)) :: acc when acc: any()
+  def reduce_child(scope, acc, fun) do
+    scope
+    |> child_groups()
+    |> Enum.reduce(acc, fn {:child, child}, acc -> fun.(child, acc) end)
+  end
+
+  @spec node_for_child(scope_t(), Child.spec_t()) :: Node.t()
+  def node_for_child(scope, child_spec) do
     scope
     |> create_ring()
-    |> HashRing.key_to_node(resource_id)
+    |> HashRing.key_to_node(child_spec)
   end
 
   @spec member_for_node(scope_t(), Node.t()) :: nil | pid()
@@ -73,9 +97,9 @@ defmodule PgdSupervisor.Distribution do
     end
   end
 
-  @spec member_for_resource(scope :: scope_t(), resource_id :: any()) :: {Node.t(), nil | pid()}
-  def member_for_resource(scope, resource_id) do
-    node = node_for_resource(scope, resource_id)
+  @spec member_for_child(scope_t(), Child.spec_t()) :: {Node.t(), nil | pid()}
+  def member_for_child(scope, child_spec) do
+    node = node_for_child(scope, child_spec)
     {node, member_for_node(scope, node)}
   end
 
@@ -90,11 +114,41 @@ defmodule PgdSupervisor.Distribution do
     end
   end
 
+  @spec track_spec(scope_t(), Child.spec_t()) :: :ok
+  defp track_spec(scope, child_spec) do
+    :pg.join(scope, spec_group(child_spec), supervisors(scope))
+  end
+
+  @spec supervisors(scope_t()) :: list(pid())
+  defp supervisors(scope) do
+    scope
+    |> :pg.which_groups()
+    |> Enum.filter(fn
+      {:member, _} -> true
+      _ -> false
+    end)
+    |> Enum.flat_map(&:pg.get_members(scope, &1))
+    |> Enum.uniq()
+  end
+
+  defp child_groups(scope) do
+    scope
+    |> :pg.which_groups()
+    |> Enum.filter(fn
+      {:child, _child} -> true
+      _ -> false
+    end)
+  end
+
+  defp spec_group(child_spec) do
+    {:spec, child_spec}
+  end
+
   defp member_group(node) do
     {:member, node}
   end
 
-  defp resource_group(node, supervisor) do
-    {:resource, {node, supervisor}}
+  defp child_group(%Child{} = c) do
+    {:child, c}
   end
 end

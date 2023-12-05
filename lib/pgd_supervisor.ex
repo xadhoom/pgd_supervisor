@@ -139,6 +139,7 @@ defmodule PgdSupervisor do
 
   """
 
+  alias PgdSupervisor.Distribution.Child
   alias PgdSupervisor.Distribution
 
   @behaviour GenServer
@@ -679,6 +680,8 @@ defmodule PgdSupervisor do
          :ok <- validate_auto_shutdown(auto_shutdown),
          :ok <- validate_scope(scope),
          :ok <- validate_sync_interval(sync_interval) do
+      Process.send_after(self(), :sync, sync_interval)
+
       {:ok,
        %{
          state
@@ -770,12 +773,12 @@ defmodule PgdSupervisor do
   end
 
   def handle_call({:terminate_child, pid}, _from, %{children: _children} = state) do
-    case Distribution.find_resource(state.scope, pid) do
+    case Distribution.find_child(state.scope, pid) do
       {:error, :not_found} ->
         # try local children anyway
         terminate_local_children(pid, state)
 
-      {:ok, {node, supervisor}} ->
+      {:ok, %Child{node: node, supervisor_pid: supervisor}} ->
         if node == Node.self() do
           terminate_local_children(pid, state)
         else
@@ -829,7 +832,7 @@ defmodule PgdSupervisor do
   end
 
   defp handle_start_child({_mfa, _restart, _shutdown, _type, _modules} = child, state) do
-    {assigned_node, assigned_supervisor} = Distribution.member_for_resource(state.scope, child)
+    {assigned_node, assigned_supervisor} = Distribution.member_for_child(state.scope, child)
 
     case assigned_supervisor do
       nil -> {:reply, {:error, :remote_supervisor_not_found}, state}
@@ -838,16 +841,19 @@ defmodule PgdSupervisor do
     end
   end
 
-  defp start_local_child({{m, f, args} = mfa, restart, shutdown, type, modules}, state) do
+  defp start_local_child(
+         {{m, f, args} = mfa, restart, shutdown, type, modules} = child_spec,
+         state
+       ) do
     %{extra_arguments: extra} = state
 
     case reply = start_child(m, f, extra ++ args) do
       {:ok, pid, _} ->
-        Distribution.resource_join(state.scope, Node.self(), self(), pid)
+        Distribution.child_join(state.scope, Node.self(), self(), pid, child_spec)
         {:reply, reply, save_child(pid, mfa, restart, shutdown, type, modules, state)}
 
       {:ok, pid} ->
-        Distribution.resource_join(state.scope, Node.self(), self(), pid)
+        Distribution.child_join(state.scope, Node.self(), self(), pid, child_spec)
         {:reply, reply, save_child(pid, mfa, restart, shutdown, type, modules, state)}
 
       _ ->
@@ -935,6 +941,13 @@ defmodule PgdSupervisor do
     end
   end
 
+  def handle_info(:sync, state) do
+    state = redistribute_processes(state)
+
+    Process.send_after(self(), :sync, state.sync_interval)
+    {:noreply, state}
+  end
+
   def handle_info(msg, state) do
     :logger.error(
       %{
@@ -991,6 +1004,45 @@ defmodule PgdSupervisor do
     end
 
     :ok
+  end
+
+  defp redistribute_processes(state) do
+    maybe_redistribute = fn %Child{} = c, state ->
+      {assigned_node, assigned_sup} = Distribution.member_for_child(state.scope, c.spec)
+
+      maybe_stop_child(c, assigned_node, assigned_sup, state)
+      maybe_start_child(c, assigned_node, assigned_sup, state)
+    end
+
+    Distribution.reduce_child(state.scope, state, maybe_redistribute)
+  end
+
+  defp maybe_stop_child(%Child{} = c, assigned_node, _assigned_sup, state) do
+    if assigned_node != c.node and c.node == Node.self() do
+      require Logger
+
+      Logger.warning(
+        "terminating #{inspect(c.pid)} from #{inspect(c.node)} to #{inspect(assigned_node)}"
+      )
+
+      terminate_local_children(c.pid, state)
+    else
+      state
+    end
+  end
+
+  defp maybe_start_child(%Child{} = c, assigned_node, _assigned_sup, state) do
+    if assigned_node == Node.self() and c.node != Node.self() do
+      require Logger
+
+      Logger.warning(
+        "starting #{inspect(c.pid)} from #{inspect(c.node)} to #{inspect(assigned_node)}"
+      )
+
+      start_local_child(c.spec, state)
+    else
+      state
+    end
   end
 
   defp monitor_children(children) do
