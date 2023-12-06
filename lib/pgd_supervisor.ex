@@ -812,6 +812,7 @@ defmodule PgdSupervisor do
     case children do
       %{^pid => info} ->
         :ok = terminate_children(%{pid => info}, state)
+        Distribution.untrack_spec(state.scope, info)
         {:reply, :ok, delete_child(pid, state)}
 
       %{} ->
@@ -1155,15 +1156,18 @@ defmodule PgdSupervisor do
     restart_child(pid, child, state)
   end
 
-  defp maybe_restart_child(_, :normal, pid, _child, state) do
+  defp maybe_restart_child(_, :normal, pid, child, state) do
+    Distribution.untrack_spec(state.scope, child)
     {:ok, delete_child(pid, state)}
   end
 
-  defp maybe_restart_child(_, :shutdown, pid, _child, state) do
+  defp maybe_restart_child(_, :shutdown, pid, child, state) do
+    Distribution.untrack_spec(state.scope, child)
     {:ok, delete_child(pid, state)}
   end
 
-  defp maybe_restart_child(_, {:shutdown, _}, pid, _child, state) do
+  defp maybe_restart_child(_, {:shutdown, _}, pid, child, state) do
+    Distribution.untrack_spec(state.scope, child)
     {:ok, delete_child(pid, state)}
   end
 
@@ -1174,15 +1178,11 @@ defmodule PgdSupervisor do
 
   defp maybe_restart_child(:temporary, reason, pid, child, state) do
     report_error(:child_terminated, reason, pid, child, state)
+    Distribution.untrack_spec(state.scope, child)
     {:ok, delete_child(pid, state)}
   end
 
   defp delete_child(pid, %{children: children} = state) do
-    case children do
-      %{^pid => child_spec} -> Distribution.untrack_spec(state.scope, child_spec)
-      _ -> :ok
-    end
-
     %{state | children: Map.delete(children, pid)}
   end
 
@@ -1200,6 +1200,7 @@ defmodule PgdSupervisor do
 
       {:shutdown, state} ->
         report_error(:shutdown, :reached_max_restart_intensity, pid, child, state)
+        Distribution.untrack_spec(state.scope, child)
         {:shutdown, delete_child(pid, state)}
     end
   end
@@ -1236,6 +1237,7 @@ defmodule PgdSupervisor do
         {:ok, save_child(pid, mfa, restart, shutdown, type, modules, state)}
 
       :ignore ->
+        Distribution.untrack_spec(state.scope, child)
         {:ok, delete_child(current_pid, state)}
 
       {:error, reason} ->
