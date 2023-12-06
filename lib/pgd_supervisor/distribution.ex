@@ -11,28 +11,18 @@ defmodule PgdSupervisor.Distribution do
 
   @type child_mapper_t :: (Child.t() -> any())
 
-  @spec start_link(scope_t()) :: {:ok, pid()} | {:error, reason :: term()}
-  def start_link(scope) do
-    :pg.start_link(scope)
+  @spec start(scope_t()) :: :ok
+  def start(scope) do
+    :syn.add_node_to_scopes([scope])
   end
 
-  @spec start_link_and_join(scope_t()) :: {:ok, pid()} | {:error, reason :: term()}
-  def start_link_and_join(scope) do
-    case start_link(scope) do
-      {:ok, pid} ->
-        :pg.join(scope, member_group(Node.self()), self())
-        {:ok, pid}
-
-      {:error, {:already_started, pid}} ->
-        :pg.join(scope, member_group(Node.self()), self())
-        {:ok, pid}
-
-      err ->
-        err
-    end
+  @spec start_and_join(scope_t()) :: :ok
+  def start_and_join(scope) do
+    start(scope)
+    :syn.join(scope, member_group(Node.self()), self())
   end
 
-  @spec child_join(scope_t(), Node.t(), pid(), pid(), Child.spec_t()) :: :ok
+  @spec child_join(scope_t(), Node.t(), pid(), pid(), Child.spec_t()) :: :ok | {:error, term()}
   def child_join(scope, node, supervisor, child_pid, child_spec) do
     child = %Child{
       node: node,
@@ -41,8 +31,12 @@ defmodule PgdSupervisor.Distribution do
       supervisor_pid: supervisor
     }
 
-    :pg.join(scope, child_group(child), child_pid)
-    track_spec(scope, child_spec)
+    case :syn.join(scope, child_group(child), child_pid) do
+      :ok ->
+        track_spec(scope, child_spec)
+        :ok
+      err -> err
+    end
   end
 
   @spec find_child(scope_t(), pid()) :: {:ok, Child.t()} | {:error, :not_found}
@@ -91,8 +85,8 @@ defmodule PgdSupervisor.Distribution do
 
   @spec member_for_node(scope_t(), Node.t()) :: nil | pid()
   def member_for_node(scope, node) do
-    case :pg.get_members(scope, member_group(node)) do
-      [member | _] -> member
+    case :syn.members(scope, member_group(node)) do
+      [{member, _meta} | _] -> member
       _ -> nil
     end
   end
@@ -105,7 +99,7 @@ defmodule PgdSupervisor.Distribution do
 
   @spec create_ring(scope_t()) :: HashRing.t()
   defp create_ring(scope) do
-    groups = :pg.which_groups(scope)
+    groups = :syn.group_names(scope)
 
     # build a consistent hash ring of existing nodes to distribute
     # child processes among them
@@ -114,26 +108,33 @@ defmodule PgdSupervisor.Distribution do
     end
   end
 
-  @spec track_spec(scope_t(), Child.spec_t()) :: :ok
+  @spec track_spec(scope_t(), Child.spec_t()) :: list(:ok | {:error, term()})
   defp track_spec(scope, child_spec) do
-    :pg.join(scope, spec_group(child_spec), supervisors(scope))
+    scope
+    |> supervisors()
+    |> then(&multi_join(scope, spec_group(child_spec), &1))
+  end
+
+  defp multi_join(scope, group, pids) do
+    Enum.map(pids, &:syn.join(scope, group, &1))
   end
 
   @spec supervisors(scope_t()) :: list(pid())
   defp supervisors(scope) do
     scope
-    |> :pg.which_groups()
+    |> :syn.group_names()
     |> Enum.filter(fn
       {:member, _} -> true
       _ -> false
     end)
-    |> Enum.flat_map(&:pg.get_members(scope, &1))
+    |> Enum.flat_map(&:syn.members(scope, &1))
+    |> Enum.map(fn {pid, _meta} -> pid end)
     |> Enum.uniq()
   end
 
   defp child_groups(scope) do
     scope
-    |> :pg.which_groups()
+    |> :syn.group_names()
     |> Enum.filter(fn
       {:child, _child} -> true
       _ -> false

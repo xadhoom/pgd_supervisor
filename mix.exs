@@ -63,6 +63,7 @@ defmodule PgdSupervisor.MixProject do
 
   defp deps do
     [
+      {:syn, "~> 3.3"},
       {:libring, "~> 1.6"},
       {:local_cluster, "~> 1.2", only: [:test]},
       {:ex_doc, "~> 0.30", only: [:dev], runtime: false},

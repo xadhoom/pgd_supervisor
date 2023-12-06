@@ -642,13 +642,8 @@ defmodule PgdSupervisor do
 
         case init(state, flags) do
           {:ok, state} ->
-            case Distribution.start_link_and_join(state.scope) do
-              {:ok, _scope_pid} ->
-                {:ok, state}
-
-              {:error, reason} ->
-                {:stop, {:distribution_start, reason}}
-            end
+            Distribution.start_and_join(state.scope)
+            {:ok, state}
 
           {:error, reason} ->
             {:stop, {:supervisor_data, reason}}
@@ -1025,7 +1020,8 @@ defmodule PgdSupervisor do
         "terminating #{inspect(c.pid)} from #{inspect(c.node)} to #{inspect(assigned_node)}"
       )
 
-      terminate_local_children(c.pid, state)
+      {_, _, state} = terminate_local_children(c.pid, state)
+      state
     else
       state
     end
@@ -1039,7 +1035,8 @@ defmodule PgdSupervisor do
         "starting #{inspect(c.pid)} from #{inspect(c.node)} to #{inspect(assigned_node)}"
       )
 
-      start_local_child(c.spec, state)
+      {_, _, state} = start_local_child(c.spec, state)
+      state
     else
       state
     end
