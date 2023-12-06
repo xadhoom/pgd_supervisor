@@ -35,7 +35,9 @@ defmodule PgdSupervisor.Distribution do
       :ok ->
         track_spec(scope, child_spec)
         :ok
-      err -> err
+
+      err ->
+        err
     end
   end
 
@@ -97,6 +99,14 @@ defmodule PgdSupervisor.Distribution do
     {node, member_for_node(scope, node)}
   end
 
+  @spec untrack_spec(scope_t(), Child.spec_t()) :: list(:ok | {:error, term()})
+  def untrack_spec(scope, child_spec) do
+    scope
+    |> :syn.members(spec_group(child_spec))
+    |> Enum.map(fn {pid, _meta} -> pid end)
+    |> then(&multi_leave(scope, spec_group(child_spec), &1))
+  end
+
   @spec create_ring(scope_t()) :: HashRing.t()
   defp create_ring(scope) do
     groups = :syn.group_names(scope)
@@ -117,6 +127,10 @@ defmodule PgdSupervisor.Distribution do
 
   defp multi_join(scope, group, pids) do
     Enum.map(pids, &:syn.join(scope, group, &1))
+  end
+
+  defp multi_leave(scope, group, pids) do
+    Enum.map(pids, &:syn.leave(scope, group, &1))
   end
 
   @spec supervisors(scope_t()) :: list(pid())

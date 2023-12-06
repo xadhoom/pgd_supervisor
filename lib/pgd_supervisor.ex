@@ -1178,6 +1178,11 @@ defmodule PgdSupervisor do
   end
 
   defp delete_child(pid, %{children: children} = state) do
+    case children do
+      %{^pid => child_spec} -> Distribution.untrack_spec(state.scope, child_spec)
+      _ -> :ok
+    end
+
     %{state | children: Map.delete(children, pid)}
   end
 
