@@ -3,6 +3,7 @@ defmodule PgdSupervisorTest do
   use ExUnit.Case, async: true
 
   defmodule Simple do
+    @moduledoc false
     use PgdSupervisor
 
     def init(args), do: args
@@ -54,6 +55,7 @@ defmodule PgdSupervisorTest do
              }
 
       defmodule Custom do
+        @moduledoc false
         use PgdSupervisor,
           id: :id,
           restart: :temporary,

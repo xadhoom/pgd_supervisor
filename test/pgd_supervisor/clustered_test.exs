@@ -267,7 +267,7 @@ defmodule PgdSupervisor.ClusteredTest do
 
   defp start_nodes(app, prefix, n) do
     LocalCluster.start_nodes(prefix, n,
-      applications: [app],
+      applications: [:syn, app],
       files: ["test/support/pgd_supervisor/worker.ex"]
     )
   end
