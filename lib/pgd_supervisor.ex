@@ -773,8 +773,9 @@ defmodule PgdSupervisor do
         # try local children anyway
         terminate_local_children(pid, state)
 
-      {:ok, %Child{node: node, supervisor_pid: supervisor}} ->
+      {:ok, %Child{node: node, supervisor_pid: supervisor} = c} ->
         if node == Node.self() do
+          Distribution.untrack_spec(state.scope, c.spec)
           terminate_local_children(pid, state)
         else
           terminate_remote_children(node, supervisor, pid, state)
@@ -812,7 +813,6 @@ defmodule PgdSupervisor do
     case children do
       %{^pid => info} ->
         :ok = terminate_children(%{pid => info}, state)
-        Distribution.untrack_spec(state.scope, info)
         {:reply, :ok, delete_child(pid, state)}
 
       %{} ->
@@ -1229,10 +1229,12 @@ defmodule PgdSupervisor do
 
     case start_child(m, f, extra ++ args) do
       {:ok, pid, _} ->
+        Distribution.child_join(state.scope, Node.self(), self(), pid, child)
         state = delete_child(current_pid, state)
         {:ok, save_child(pid, mfa, restart, shutdown, type, modules, state)}
 
       {:ok, pid} ->
+        Distribution.child_join(state.scope, Node.self(), self(), pid, child)
         state = delete_child(current_pid, state)
         {:ok, save_child(pid, mfa, restart, shutdown, type, modules, state)}
 
