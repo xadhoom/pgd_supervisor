@@ -1006,7 +1006,7 @@ defmodule PgdSupervisor do
     maybe_redistribute = fn %Child{} = c, state ->
       {assigned_node, assigned_sup} = Distribution.member_for_child(state.scope, c.spec)
 
-      maybe_stop_child(c, assigned_node, assigned_sup, state)
+      state = maybe_stop_child(c, assigned_node, assigned_sup, state)
       maybe_start_child(c, assigned_node, assigned_sup, state)
     end
 
