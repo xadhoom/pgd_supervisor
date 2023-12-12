@@ -78,6 +78,13 @@ defmodule PgdSupervisor.Distribution do
     |> Enum.reduce(acc, fn {:child, child}, acc -> fun.(child, acc) end)
   end
 
+  @spec reduce_specs(scope_t(), acc, (Child.spec_t(), acc -> acc)) :: acc when acc: any()
+  def reduce_specs(scope, acc, fun) do
+    scope
+    |> spec_groups()
+    |> Enum.reduce(acc, fn {:spec, spec}, acc -> fun.(spec, acc) end)
+  end
+
   @spec node_for_child(scope_t(), Child.spec_t()) :: Node.t()
   def node_for_child(scope, child_spec) do
     scope
@@ -151,6 +158,15 @@ defmodule PgdSupervisor.Distribution do
     |> :syn.group_names()
     |> Enum.filter(fn
       {:child, _child} -> true
+      _ -> false
+    end)
+  end
+
+  defp spec_groups(scope) do
+    scope
+    |> :syn.group_names()
+    |> Enum.filter(fn
+      {:spec, _child_spec} -> true
       _ -> false
     end)
   end

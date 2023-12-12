@@ -1010,17 +1010,23 @@ defmodule PgdSupervisor do
       maybe_start_child(c, assigned_node, assigned_sup, state)
     end
 
-    Distribution.reduce_child(state.scope, state, maybe_redistribute)
+    maybe_start_missing = fn child_spec, state ->
+      {assigned_node, _assigned_sup} = Distribution.member_for_child(state.scope, child_spec)
+
+      if assigned_node == Node.self() do
+        {_, _, state} = start_local_child(child_spec, state)
+        state
+      else
+        state
+      end
+    end
+
+    state = Distribution.reduce_child(state.scope, state, maybe_redistribute)
+    Distribution.reduce_specs(state.scope, state, maybe_start_missing)
   end
 
   defp maybe_stop_child(%Child{} = c, assigned_node, _assigned_sup, state) do
     if assigned_node != c.node and c.node == Node.self() do
-      require Logger
-
-      Logger.warning(
-        "terminating #{inspect(c.pid)} from #{inspect(c.node)} to #{inspect(assigned_node)}"
-      )
-
       {_, _, state} = terminate_local_children(c.pid, state)
       state
     else
@@ -1030,12 +1036,6 @@ defmodule PgdSupervisor do
 
   defp maybe_start_child(%Child{} = c, assigned_node, _assigned_sup, state) do
     if assigned_node == Node.self() and c.node != Node.self() do
-      require Logger
-
-      Logger.warning(
-        "starting #{inspect(c.pid)} from #{inspect(c.node)} to #{inspect(assigned_node)}"
-      )
-
       {_, _, state} = start_local_child(c.spec, state)
       state
     else
