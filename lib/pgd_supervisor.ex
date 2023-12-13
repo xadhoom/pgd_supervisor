@@ -406,7 +406,7 @@ defmodule PgdSupervisor do
     end
   end
 
-  defp validate_child(%{id: _, start: {mod, _, _} = start} = child) do
+  defp validate_child(%{id: id, start: {mod, _, _} = start} = child) do
     restart = Map.get(child, :restart, :permanent)
     type = Map.get(child, :type, :worker)
     modules = Map.get(child, :modules, [mod])
@@ -418,25 +418,26 @@ defmodule PgdSupervisor do
         :supervisor -> Map.get(child, :shutdown, :infinity)
       end
 
-    validate_child(start, restart, shutdown, type, modules, significant)
+    validate_child(start, restart, shutdown, type, modules, significant, id)
   end
 
-  defp validate_child({_, start, restart, shutdown, type, modules}) do
-    validate_child(start, restart, shutdown, type, modules, false)
+  defp validate_child({id, start, restart, shutdown, type, modules}) do
+    validate_child(start, restart, shutdown, type, modules, false, id)
   end
 
   defp validate_child(other) do
     {:invalid_child_spec, other}
   end
 
-  defp validate_child(start, restart, shutdown, type, modules, significant) do
+  defp validate_child(start, restart, shutdown, type, modules, significant, id) do
     with :ok <- validate_start(start),
          :ok <- validate_restart(restart),
          :ok <- validate_shutdown(shutdown),
          :ok <- validate_type(type),
          :ok <- validate_modules(modules),
-         :ok <- validate_significant(significant) do
-      {:ok, {start, restart, shutdown, type, modules}}
+         :ok <- validate_significant(significant),
+         :ok <- validate_id(id) do
+      {:ok, {id, start, restart, shutdown, type, modules}}
     end
   end
 
@@ -464,6 +465,12 @@ defmodule PgdSupervisor do
     else
       {:invalid_modules, mods}
     end
+  end
+
+  defp validate_id(_id) do
+    # just like in otp's supervisor, we just validate the id is there, not its
+    # value
+    :ok
   end
 
   @doc """
@@ -725,10 +732,10 @@ defmodule PgdSupervisor do
     reply =
       for {pid, args} <- children do
         case args do
-          {:restarting, {_, _, _, type, modules}} ->
+          {:restarting, {_, _, _, _, type, modules}} ->
             {:undefined, :restarting, type, modules}
 
-          {_, _, _, type, modules} ->
+          {_, _, _, _, type, modules} ->
             {:undefined, pid, type, modules}
         end
       end
@@ -746,16 +753,16 @@ defmodule PgdSupervisor do
 
     {active, workers, supervisors} =
       Enum.reduce(children, {0, 0, 0}, fn
-        {_pid, {:restarting, {_, _, _, :worker, _}}}, {active, worker, supervisor} ->
+        {_pid, {:restarting, {_, _, _, _, :worker, _}}}, {active, worker, supervisor} ->
           {active, worker + 1, supervisor}
 
-        {_pid, {:restarting, {_, _, _, :supervisor, _}}}, {active, worker, supervisor} ->
+        {_pid, {:restarting, {_, _, _, _, :supervisor, _}}}, {active, worker, supervisor} ->
           {active, worker, supervisor + 1}
 
-        {_pid, {_, _, _, :worker, _}}, {active, worker, supervisor} ->
+        {_pid, {_, _, _, _, :worker, _}}, {active, worker, supervisor} ->
           {active + 1, worker + 1, supervisor}
 
-        {_pid, {_, _, _, :supervisor, _}}, {active, worker, supervisor} ->
+        {_pid, {_, _, _, _, :supervisor, _}}, {active, worker, supervisor} ->
           {active + 1, worker, supervisor + 1}
       end)
 
@@ -793,7 +800,8 @@ defmodule PgdSupervisor do
       shutdown = shutdown || init_shutdown
 
       child =
-        {{Task.Supervised, :start_link, args}, restart, shutdown, :worker, [Task.Supervised]}
+        {Task, {Task.Supervised, :start_link, args}, restart, shutdown, :worker,
+         [Task.Supervised]}
 
       handle_call({:start_child, child}, from, state)
     end
@@ -827,8 +835,14 @@ defmodule PgdSupervisor do
     end
   end
 
-  defp handle_start_child({_mfa, _restart, _shutdown, _type, _modules} = child, state) do
-    {assigned_node, assigned_supervisor} = Distribution.member_for_child(state.scope, child)
+  defp generate_child_id({_id, mfa, restart, shutdown, type, modules}) do
+    id = UUID.uuid4()
+    {id, {id, mfa, restart, shutdown, type, modules}}
+  end
+
+  defp handle_start_child({_id, _mfa, _restart, _shutdown, _type, _modules} = child, state) do
+    {child_id, child} = generate_child_id(child)
+    {assigned_node, assigned_supervisor} = Distribution.member_for_child(state.scope, child_id)
 
     case assigned_supervisor do
       nil -> {:reply, {:error, :remote_supervisor_not_found}, state}
@@ -838,19 +852,19 @@ defmodule PgdSupervisor do
   end
 
   defp start_local_child(
-         {{m, f, args} = mfa, restart, shutdown, type, modules} = child_spec,
+         {id, {m, f, args} = mfa, restart, shutdown, type, modules} = child_spec,
          state
        ) do
     %{extra_arguments: extra} = state
 
     case reply = start_child(m, f, extra ++ args) do
       {:ok, pid, _} ->
-        Distribution.child_join(state.scope, Node.self(), self(), pid, child_spec)
-        {:reply, reply, save_child(pid, mfa, restart, shutdown, type, modules, state)}
+        Distribution.child_join(state.scope, id, Node.self(), self(), pid, child_spec)
+        {:reply, reply, save_child(pid, id, mfa, restart, shutdown, type, modules, state)}
 
       {:ok, pid} ->
-        Distribution.child_join(state.scope, Node.self(), self(), pid, child_spec)
-        {:reply, reply, save_child(pid, mfa, restart, shutdown, type, modules, state)}
+        Distribution.child_join(state.scope, id, Node.self(), self(), pid, child_spec)
+        {:reply, reply, save_child(pid, id, mfa, restart, shutdown, type, modules, state)}
 
       _ ->
         {:reply, reply, state}
@@ -858,10 +872,10 @@ defmodule PgdSupervisor do
   end
 
   defp start_remote_child(child, {node, assigned_sup}, state) do
-    {start, restart, shutdown, type, modules} = child
+    {id, start, restart, shutdown, type, modules} = child
 
     child = %{
-      id: :ignored,
+      id: id,
       start: start,
       restart: restart,
       shutdown: shutdown,
@@ -893,9 +907,9 @@ defmodule PgdSupervisor do
     end
   end
 
-  defp save_child(pid, mfa, restart, shutdown, type, modules, state) do
+  defp save_child(pid, id, mfa, restart, shutdown, type, modules, state) do
     mfa = mfa_for_restart(mfa, restart)
-    put_in(state.children[pid], {mfa, restart, shutdown, type, modules})
+    put_in(state.children[pid], {id, mfa, restart, shutdown, type, modules})
   end
 
   defp mfa_for_restart({m, f, _}, :temporary), do: {m, f, :undefined}
@@ -1004,14 +1018,15 @@ defmodule PgdSupervisor do
 
   defp redistribute_processes(state) do
     maybe_redistribute = fn %Child{} = c, state ->
-      {assigned_node, assigned_sup} = Distribution.member_for_child(state.scope, c.spec)
+      {assigned_node, assigned_sup} = Distribution.member_for_child(state.scope, c.id)
 
       state = maybe_stop_child(c, assigned_node, assigned_sup, state)
       maybe_start_child(c, assigned_node, assigned_sup, state)
     end
 
     maybe_start_missing = fn child_spec, state ->
-      {assigned_node, _assigned_sup} = Distribution.member_for_child(state.scope, child_spec)
+      {child_id, _, _, _, _, _} = child_spec
+      {assigned_node, _assigned_sup} = Distribution.member_for_child(state.scope, child_id)
 
       if assigned_node == Node.self() do
         {_, _, state} = start_local_child(child_spec, state)
@@ -1048,7 +1063,7 @@ defmodule PgdSupervisor do
       {_, {:restarting, _}}, acc ->
         acc
 
-      {pid, {_, restart, _, _, _} = child}, {pids, times, stacks} ->
+      {pid, {_, _, restart, _, _, _} = child}, {pids, times, stacks} ->
         case monitor_child(pid) do
           :ok ->
             times = exit_child(pid, child, times)
@@ -1077,7 +1092,7 @@ defmodule PgdSupervisor do
     end
   end
 
-  defp exit_child(pid, {_, _, shutdown, _, _}, times) do
+  defp exit_child(pid, {_, _, _, shutdown, _, _}, times) do
     case shutdown do
       :brutal_kill ->
         Process.exit(pid, :kill)
@@ -1125,14 +1140,14 @@ defmodule PgdSupervisor do
     end
   end
 
-  defp wait_child(pid, {_, _, :brutal_kill, _, _} = child, reason, stacks) do
+  defp wait_child(pid, {_, _, _, :brutal_kill, _, _} = child, reason, stacks) do
     case reason do
       :killed -> stacks
       _ -> Map.put(stacks, pid, {child, reason})
     end
   end
 
-  defp wait_child(pid, {_, restart, _, _, _} = child, reason, stacks) do
+  defp wait_child(pid, {_, _, restart, _, _, _} = child, reason, stacks) do
     case reason do
       {:shutdown, _} -> stacks
       :shutdown -> stacks
@@ -1143,7 +1158,7 @@ defmodule PgdSupervisor do
 
   defp maybe_restart_child(pid, reason, %{children: children} = state) do
     case children do
-      %{^pid => {_, restart, _, _, _} = child} ->
+      %{^pid => {_, _, restart, _, _, _} = child} ->
         maybe_restart_child(restart, reason, pid, child, state)
 
       %{} ->
@@ -1224,19 +1239,19 @@ defmodule PgdSupervisor do
   end
 
   defp restart_child(:one_for_one, current_pid, child, state) do
-    {{m, f, args} = mfa, restart, shutdown, type, modules} = child
+    {id, {m, f, args} = mfa, restart, shutdown, type, modules} = child
     %{extra_arguments: extra} = state
 
     case start_child(m, f, extra ++ args) do
       {:ok, pid, _} ->
-        Distribution.child_join(state.scope, Node.self(), self(), pid, child)
+        Distribution.child_join(state.scope, id, Node.self(), self(), pid, child)
         state = delete_child(current_pid, state)
-        {:ok, save_child(pid, mfa, restart, shutdown, type, modules, state)}
+        {:ok, save_child(pid, id, mfa, restart, shutdown, type, modules, state)}
 
       {:ok, pid} ->
-        Distribution.child_join(state.scope, Node.self(), self(), pid, child)
+        Distribution.child_join(state.scope, id, Node.self(), self(), pid, child)
         state = delete_child(current_pid, state)
-        {:ok, save_child(pid, mfa, restart, shutdown, type, modules, state)}
+        {:ok, save_child(pid, id, mfa, restart, shutdown, type, modules, state)}
 
       :ignore ->
         Distribution.untrack_spec(state.scope, child)
@@ -1269,10 +1284,10 @@ defmodule PgdSupervisor do
     )
   end
 
-  defp extract_child(pid, {{m, f, args}, restart, shutdown, type, _modules}, extra) do
+  defp extract_child(pid, {id, {m, f, args}, restart, shutdown, type, _modules}, extra) do
     [
       pid: pid,
-      id: :undefined,
+      id: id,
       mfargs: {m, f, extra ++ args},
       restart_type: restart,
       shutdown: shutdown,

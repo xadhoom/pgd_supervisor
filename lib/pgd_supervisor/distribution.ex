@@ -22,9 +22,11 @@ defmodule PgdSupervisor.Distribution do
     :syn.join(scope, member_group(Node.self()), self())
   end
 
-  @spec child_join(scope_t(), Node.t(), pid(), pid(), Child.spec_t()) :: :ok | {:error, term()}
-  def child_join(scope, node, supervisor, child_pid, child_spec) do
+  @spec child_join(scope_t(), String.t(), Node.t(), pid(), pid(), Child.spec_t()) ::
+          :ok | {:error, term()}
+  def child_join(scope, id, node, supervisor, child_pid, child_spec) do
     child = %Child{
+      id: id,
       node: node,
       pid: child_pid,
       spec: child_spec,
@@ -41,14 +43,25 @@ defmodule PgdSupervisor.Distribution do
     end
   end
 
-  @spec find_child(scope_t(), pid()) :: {:ok, Child.t()} | {:error, :not_found}
-  def find_child(scope, pid) do
-    scope
-    |> child_groups()
-    |> Enum.find_value(
-      {:error, :not_found},
+  @spec find_child(scope_t(), String.t() | pid()) :: {:ok, Child.t()} | {:error, :not_found}
+  def find_child(scope, pid) when is_pid(pid) do
+    find_child_with_fn(
+      scope,
       fn
         {:child, %Child{pid: ^pid} = c} ->
+          {:ok, c}
+
+        _ ->
+          false
+      end
+    )
+  end
+
+  def find_child(scope, id) when is_binary(id) do
+    find_child_with_fn(
+      scope,
+      fn
+        {:child, %Child{id: ^id} = c} ->
           {:ok, c}
 
         _ ->
@@ -123,6 +136,23 @@ defmodule PgdSupervisor.Distribution do
     for {:member, node} <- groups, reduce: HashRing.new() do
       acc -> HashRing.add_node(acc, node)
     end
+  end
+
+  @spec find_child_with_fn(scope_t(), ({:child, Child.t()} -> boolean())) ::
+          {:ok, Child.t()} | {:error, :not_found}
+  defp find_child_with_fn(scope, fun) do
+    scope
+    |> child_groups()
+    |> Enum.find_value(
+      {:error, :not_found},
+      fn {:child, c} ->
+        if fun.(c) do
+          {:ok, c}
+        else
+          false
+        end
+      end
+    )
   end
 
   @spec track_spec(scope_t(), Child.spec_t()) :: list(:ok | {:error, term()})

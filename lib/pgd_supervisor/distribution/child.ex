@@ -6,12 +6,13 @@ defmodule PgdSupervisor.Distribution.Child do
   @type spec_t :: any()
 
   @type t :: %__MODULE__{
+          id: String.t(),
           pid: pid(),
           node: Node.t(),
           supervisor_pid: pid(),
           spec: spec_t()
         }
 
-  @enforce_keys [:pid, :node, :supervisor_pid, :spec]
-  defstruct [:pid, :node, :supervisor_pid, :spec]
+  @enforce_keys [:id, :pid, :node, :supervisor_pid, :spec]
+  defstruct [:id, :pid, :node, :supervisor_pid, :spec]
 end
