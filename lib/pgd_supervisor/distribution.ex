@@ -49,7 +49,7 @@ defmodule PgdSupervisor.Distribution do
       {:error, :not_found},
       fn
         {:child, %Child{pid: ^pid} = c} ->
-          c
+          {:ok, c}
 
         _ ->
           false
