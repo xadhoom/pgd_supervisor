@@ -27,8 +27,8 @@ defmodule PgdSupervisor.ClusteredTest do
 
     assert_async do
       assert %{
-               ^node1 => [],
-               ^node2 => [{:undefined, ^pid, :worker, [Worker]}]
+               ^node1 => [{_, ^pid, :worker, [Worker]}],
+               ^node2 => []
              } = local_children([node1, node2])
     end
   end
@@ -36,16 +36,16 @@ defmodule PgdSupervisor.ClusteredTest do
   test "starts children on a different nodes in the cluster" do
     [node1, node2] = start_nodes(:test_app, "foo", 2)
 
-    child_spec_1 = Worker.child_spec(:init_args_1)
-    child_spec_2 = Worker.child_spec(:init_args_2)
+    child_spec_1 = Worker.child_spec(:init_args_a)
+    child_spec_2 = Worker.child_spec(:init_args_b)
 
     {:ok, pid1} = start_child(node1, child_spec_1)
     {:ok, pid2} = start_child(node2, child_spec_2)
 
     assert_async do
       assert %{
-               ^node1 => [{:undefined, ^pid2, :worker, [Worker]}],
-               ^node2 => [{:undefined, ^pid1, :worker, [Worker]}]
+               ^node1 => [{{Worker, :init_args_a}, ^pid1, :worker, [Worker]}],
+               ^node2 => [{{Worker, :init_args_b}, ^pid2, :worker, [Worker]}]
              } = local_children([node1, node2])
     end
   end
@@ -53,9 +53,9 @@ defmodule PgdSupervisor.ClusteredTest do
   test "distributes children between nodes when topology changes" do
     [node1, node2] = start_nodes(:test_app, "foo", 2)
 
-    child_spec_1 = Worker.child_spec(10)
-    child_spec_2 = Worker.child_spec(20)
-    child_spec_3 = Worker.child_spec(30)
+    child_spec_1 = Worker.child_spec(:a)
+    child_spec_2 = Worker.child_spec(:b)
+    child_spec_3 = Worker.child_spec(:c)
 
     {:ok, pid1} = start_child(node1, child_spec_1)
     {:ok, pid2} = start_child(node1, child_spec_2)
@@ -63,10 +63,12 @@ defmodule PgdSupervisor.ClusteredTest do
 
     assert_async do
       assert %{
-               ^node1 => [{:undefined, ^pid1, :worker, [Worker]}],
+               ^node1 => [
+                 {{Worker, :a}, ^pid1, :worker, [Worker]},
+                 {{Worker, :c}, ^pid3, :worker, [Worker]}
+               ],
                ^node2 => [
-                 {:undefined, ^pid2, :worker, [Worker]},
-                 {:undefined, ^pid3, :worker, [Worker]}
+                 {{Worker, :b}, ^pid2, :worker, [Worker]}
                ]
              } = local_children([node1, node2])
     end
@@ -76,9 +78,9 @@ defmodule PgdSupervisor.ClusteredTest do
 
     assert_async do
       assert %{
-               ^node1 => [{:undefined, ^pid1, :worker, [Worker]}],
-               ^node2 => [{:undefined, ^pid3, :worker, [Worker]}],
-               ^node3 => [{:undefined, ^pid2, :worker, [Worker]}]
+               ^node1 => [{{Worker, :c}, _, :worker, [Worker]}],
+               ^node2 => [{{Worker, :b}, _, :worker, [Worker]}],
+               ^node3 => [{{Worker, :a}, _, :worker, [Worker]}]
              } = local_children([node1, node2, node3])
     end
   end
@@ -86,19 +88,19 @@ defmodule PgdSupervisor.ClusteredTest do
   test "restart process on another node when the node it was scheduled on goes down" do
     [node1, node2, node3] = start_nodes(:test_app, "foo", 3)
 
-    child_spec_1 = Worker.child_spec(10)
-    child_spec_2 = Worker.child_spec(20)
-    child_spec_3 = Worker.child_spec(30)
+    child_spec_1 = Worker.child_spec(:a)
+    child_spec_2 = Worker.child_spec(:b)
+    child_spec_3 = Worker.child_spec(:e)
 
-    {:ok, pid1} = start_child(node1, child_spec_1)
-    {:ok, pid2} = start_child(node1, child_spec_2)
-    {:ok, pid3} = start_child(node1, child_spec_3)
+    {:ok, _pid1} = start_child(node1, child_spec_1)
+    {:ok, _pid2} = start_child(node1, child_spec_2)
+    {:ok, _pid3} = start_child(node1, child_spec_3)
 
     assert_async do
       assert %{
-               ^node1 => [{:undefined, ^pid1, :worker, [Worker]}],
-               ^node2 => [{:undefined, ^pid3, :worker, [Worker]}],
-               ^node3 => [{:undefined, ^pid2, :worker, [Worker]}]
+               ^node1 => [{{Worker, :a}, _, :worker, [Worker]}],
+               ^node2 => [{{Worker, :b}, _, :worker, [Worker]}],
+               ^node3 => [{{Worker, :e}, _, :worker, [Worker]}]
              } = local_children([node1, node2, node3])
     end
 
@@ -106,10 +108,12 @@ defmodule PgdSupervisor.ClusteredTest do
 
     assert_async do
       assert %{
-               ^node1 => [{:undefined, ^pid1, :worker, [Worker]}],
+               ^node1 => [
+                 {{Worker, :a}, _, :worker, [Worker]},
+                 {{Worker, :e}, _, :worker, [Worker]}
+               ],
                ^node2 => [
-                 {:undefined, _new_pid2, :worker, [Worker]},
-                 {:undefined, ^pid3, :worker, [Worker]}
+                 {{Worker, :b}, _, :worker, [Worker]}
                ]
              } = local_children([node1, node2])
     end
@@ -119,19 +123,19 @@ defmodule PgdSupervisor.ClusteredTest do
     test "returns children running on the local node" do
       [node1, node2] = start_nodes(:test_app, "foo", 2)
 
-      child_spec_1 = Worker.child_spec(:init_args_1)
-      child_spec_2 = Worker.child_spec(:init_args_2)
+      child_spec_1 = Worker.child_spec(:init_args_a)
+      child_spec_2 = Worker.child_spec(:init_args_b)
 
-      {:ok, pid1} = start_child(node1, child_spec_1)
-      {:ok, pid2} = start_child(node2, child_spec_2)
+      {:ok, _pid1} = start_child(node1, child_spec_1)
+      {:ok, _pid2} = start_child(node2, child_spec_2)
 
       assert_async do
-        assert [{:undefined, ^pid2, :worker, [Worker]}] =
+        assert [{{Worker, :init_args_a}, _, :worker, [Worker]}] =
                  :rpc.call(node1, PgdSupervisor, :which_children, [@supervisor])
       end
 
       assert_async do
-        assert [{:undefined, ^pid1, :worker, [Worker]}] =
+        assert [{{Worker, :init_args_b}, _, :worker, [Worker]}] =
                  :rpc.call(node2, PgdSupervisor, :which_children, [@supervisor])
       end
     end
@@ -141,19 +145,19 @@ defmodule PgdSupervisor.ClusteredTest do
     test "returns children running on the node when called with :local" do
       [node1, node2] = start_nodes(:test_app, "foo", 2)
 
-      child_spec_1 = Worker.child_spec(:init_args_1)
-      child_spec_2 = Worker.child_spec(:init_args_2)
+      child_spec_1 = Worker.child_spec(:init_args_a)
+      child_spec_2 = Worker.child_spec(:init_args_b)
 
-      {:ok, pid1} = start_child(node1, child_spec_1)
-      {:ok, pid2} = start_child(node2, child_spec_2)
+      {:ok, _pid1} = start_child(node1, child_spec_1)
+      {:ok, _pid2} = start_child(node2, child_spec_2)
 
       assert_async do
-        assert [{:undefined, ^pid2, :worker, [Worker]}] =
+        assert [{{Worker, :init_args_a}, _, :worker, [Worker]}] =
                  :rpc.call(node1, PgdSupervisor, :which_children, [@supervisor, :local])
       end
 
       assert_async do
-        assert [{:undefined, ^pid1, :worker, [Worker]}] =
+        assert [{{Worker, :init_args_b}, _, :worker, [Worker]}] =
                  :rpc.call(node2, PgdSupervisor, :which_children, [@supervisor, :local])
       end
     end
@@ -193,8 +197,8 @@ defmodule PgdSupervisor.ClusteredTest do
     test "counts children running on the local node" do
       [node1, node2] = start_nodes(:test_app, "foo", 2)
 
-      child_spec_1 = Worker.child_spec(:init_args_1)
-      child_spec_2 = Worker.child_spec(:init_args_2)
+      child_spec_1 = Worker.child_spec(:init_args_a)
+      child_spec_2 = Worker.child_spec(:init_args_b)
 
       {:ok, _pid1} = start_child(node1, child_spec_1)
       {:ok, _pid2} = start_child(node2, child_spec_2)
@@ -215,8 +219,8 @@ defmodule PgdSupervisor.ClusteredTest do
     test "counts children running on the local node when called with :local" do
       [node1, node2] = start_nodes(:test_app, "foo", 2)
 
-      child_spec_1 = Worker.child_spec(:init_args_1)
-      child_spec_2 = Worker.child_spec(:init_args_2)
+      child_spec_1 = Worker.child_spec(:init_args_a)
+      child_spec_2 = Worker.child_spec(:init_args_b)
 
       {:ok, _pid1} = start_child(node1, child_spec_1)
       {:ok, _pid2} = start_child(node2, child_spec_2)
