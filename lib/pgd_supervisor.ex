@@ -497,7 +497,7 @@ defmodule PgdSupervisor do
 
   This function returns a list of tuples containing:
 
-    * `id` - it is always `:undefined` for dynamic supervisors
+    * `id` - the `:id` as defined in the child specification
 
     * `child` - the PID of the corresponding child process or the
       atom `:restarting` if the process is about to be restarted
@@ -735,11 +735,11 @@ defmodule PgdSupervisor do
     reply =
       for {pid, args} <- children do
         case args do
-          {:restarting, {_, _, _, _, type, modules}} ->
-            {:undefined, :restarting, type, modules}
+          {:restarting, {id, _, _, _, type, modules}} ->
+            {id, :restarting, type, modules}
 
-          {_, _, _, _, type, modules} ->
-            {:undefined, pid, type, modules}
+          {id, _, _, _, type, modules} ->
+            {id, pid, type, modules}
         end
       end
 
