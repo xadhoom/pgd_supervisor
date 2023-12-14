@@ -300,13 +300,14 @@ defmodule PgdSupervisorTest do
     end
 
     test "temporary child is not restarted regardless of reason", %{scope: scope} do
-      child = current_module_worker([:ok2], restart: :temporary)
       {:ok, pid} = PgdSupervisor.start_link(strategy: :one_for_one, scope: scope)
 
+      child = current_module_worker([:ok2], restart: :temporary)
       assert {:ok, child_pid} = PgdSupervisor.start_child(pid, child)
       assert_kill(child_pid, :shutdown)
       assert %{workers: 0, active: 0} = PgdSupervisor.count_children(pid)
 
+      child = current_module_worker([:ok2], restart: :temporary)
       assert {:ok, child_pid} = PgdSupervisor.start_child(pid, child)
       assert_kill(child_pid, :whatever)
       assert %{workers: 0, active: 0} = PgdSupervisor.count_children(pid)
@@ -330,19 +331,20 @@ defmodule PgdSupervisorTest do
     end
 
     test "permanent child is restarted regardless of reason", %{scope: scope} do
-      child = current_module_worker([:ok2], restart: :permanent)
-
       {:ok, pid} =
         PgdSupervisor.start_link(strategy: :one_for_one, scope: scope, max_restarts: 100_000)
 
+      child = current_module_worker([:ok2], restart: :permanent)
       assert {:ok, child_pid} = PgdSupervisor.start_child(pid, child)
       assert_kill(child_pid, :shutdown)
       assert %{workers: 1, active: 1} = PgdSupervisor.count_children(pid)
 
+      child = current_module_worker([:ok2], restart: :permanent)
       assert {:ok, child_pid} = PgdSupervisor.start_child(pid, child)
       assert_kill(child_pid, {:shutdown, :signal})
       assert %{workers: 2, active: 2} = PgdSupervisor.count_children(pid)
 
+      child = current_module_worker([:ok2], restart: :permanent)
       assert {:ok, child_pid} = PgdSupervisor.start_child(pid, child)
       assert_kill(child_pid, :whatever)
       assert %{workers: 3, active: 3} = PgdSupervisor.count_children(pid)
@@ -355,8 +357,7 @@ defmodule PgdSupervisorTest do
       assert {:ok, child1} =
                PgdSupervisor.start_child(pid, current_module_worker([:restart, :ok2]))
 
-      assert [{:undefined, ^child1, :worker, [PgdSupervisorTest]}] =
-               PgdSupervisor.which_children(pid)
+      assert [{_, ^child1, :worker, [PgdSupervisorTest]}] = PgdSupervisor.which_children(pid)
 
       assert_kill(child1, :shutdown)
       assert %{workers: 1, active: 1} = PgdSupervisor.count_children(pid)
@@ -365,8 +366,8 @@ defmodule PgdSupervisorTest do
                PgdSupervisor.start_child(pid, current_module_worker([:restart, :ok3]))
 
       assert [
-               {:undefined, _, :worker, [PgdSupervisorTest]},
-               {:undefined, ^child2, :worker, [PgdSupervisorTest]}
+               {_, _, :worker, [PgdSupervisorTest]},
+               {_, ^child2, :worker, [PgdSupervisorTest]}
              ] = PgdSupervisor.which_children(pid)
 
       assert_kill(child2, :shutdown)
@@ -376,9 +377,9 @@ defmodule PgdSupervisorTest do
                PgdSupervisor.start_child(pid, current_module_worker([:restart, :ignore]))
 
       assert [
-               {:undefined, _, :worker, [PgdSupervisorTest]},
-               {:undefined, _, :worker, [PgdSupervisorTest]},
-               {:undefined, _, :worker, [PgdSupervisorTest]}
+               {_, _, :worker, [PgdSupervisorTest]},
+               {_, _, :worker, [PgdSupervisorTest]},
+               {_, _, :worker, [PgdSupervisorTest]}
              ] = PgdSupervisor.which_children(pid)
 
       assert_kill(child3, :shutdown)
@@ -388,9 +389,9 @@ defmodule PgdSupervisorTest do
                PgdSupervisor.start_child(pid, current_module_worker([:restart, :error]))
 
       assert [
-               {:undefined, _, :worker, [PgdSupervisorTest]},
-               {:undefined, _, :worker, [PgdSupervisorTest]},
-               {:undefined, _, :worker, [PgdSupervisorTest]}
+               {_, _, :worker, [PgdSupervisorTest]},
+               {_, _, :worker, [PgdSupervisorTest]},
+               {_, _, :worker, [PgdSupervisorTest]}
              ] = PgdSupervisor.which_children(pid)
 
       assert_kill(child4, :shutdown)
@@ -400,10 +401,10 @@ defmodule PgdSupervisorTest do
                PgdSupervisor.start_child(pid, current_module_worker([:restart, :unknown]))
 
       assert [
-               {:undefined, _, :worker, [PgdSupervisorTest]},
-               {:undefined, _, :worker, [PgdSupervisorTest]},
-               {:undefined, :restarting, :worker, [PgdSupervisorTest]},
-               {:undefined, _, :worker, [PgdSupervisorTest]}
+               {_, _, :worker, [PgdSupervisorTest]},
+               {_, _, :worker, [PgdSupervisorTest]},
+               {_, :restarting, :worker, [PgdSupervisorTest]},
+               {_, _, :worker, [PgdSupervisorTest]}
              ] = PgdSupervisor.which_children(pid)
 
       assert_kill(child5, :shutdown)
@@ -556,7 +557,9 @@ defmodule PgdSupervisorTest do
 
       child = sleepy_worker(shutdown: :brutal_kill)
       assert {:ok, child1} = PgdSupervisor.start_child(sup, child)
+      child = sleepy_worker(shutdown: :brutal_kill)
       assert {:ok, child2} = PgdSupervisor.start_child(sup, child)
+      child = sleepy_worker(shutdown: :brutal_kill)
       assert {:ok, child3} = PgdSupervisor.start_child(sup, child)
 
       Process.monitor(child1)
@@ -574,7 +577,9 @@ defmodule PgdSupervisorTest do
 
       child = sleepy_worker(shutdown: :infinity)
       assert {:ok, child1} = PgdSupervisor.start_child(sup, child)
+      child = sleepy_worker(shutdown: :infinity)
       assert {:ok, child2} = PgdSupervisor.start_child(sup, child)
+      child = sleepy_worker(shutdown: :infinity)
       assert {:ok, child3} = PgdSupervisor.start_child(sup, child)
 
       Process.monitor(child1)
@@ -597,10 +602,10 @@ defmodule PgdSupervisorTest do
         receive(do: (_ -> exit({:shutdown, :oops})))
       end
 
-      child = Supervisor.child_spec({Task, fun}, shutdown: :infinity)
-      assert {:ok, child1} = PgdSupervisor.start_child(sup, child)
-      assert {:ok, child2} = PgdSupervisor.start_child(sup, child)
-      assert {:ok, child3} = PgdSupervisor.start_child(sup, child)
+      child = fn id -> Supervisor.child_spec({Task, fun}, id: id, shutdown: :infinity) end
+      assert {:ok, child1} = PgdSupervisor.start_child(sup, child.(1))
+      assert {:ok, child2} = PgdSupervisor.start_child(sup, child.(2))
+      assert {:ok, child3} = PgdSupervisor.start_child(sup, child.(3))
 
       assert_receive :ready
       assert_receive :ready
@@ -622,7 +627,9 @@ defmodule PgdSupervisorTest do
 
       child = sleepy_worker(shutdown: 1000)
       assert {:ok, child1} = PgdSupervisor.start_child(sup, child)
+      child = sleepy_worker(shutdown: 1000)
       assert {:ok, child2} = PgdSupervisor.start_child(sup, child)
+      child = sleepy_worker(shutdown: 1000)
       assert {:ok, child3} = PgdSupervisor.start_child(sup, child)
 
       Process.monitor(child1)
@@ -645,10 +652,10 @@ defmodule PgdSupervisorTest do
         receive(do: (_ -> exit({:shutdown, :oops})))
       end
 
-      child = Supervisor.child_spec({Task, fun}, shutdown: 1000)
-      assert {:ok, child1} = PgdSupervisor.start_child(sup, child)
-      assert {:ok, child2} = PgdSupervisor.start_child(sup, child)
-      assert {:ok, child3} = PgdSupervisor.start_child(sup, child)
+      child = fn id -> Supervisor.child_spec({Task, fun}, id: id, shutdown: 1000) end
+      assert {:ok, child1} = PgdSupervisor.start_child(sup, child.(1))
+      assert {:ok, child2} = PgdSupervisor.start_child(sup, child.(2))
+      assert {:ok, child3} = PgdSupervisor.start_child(sup, child.(3))
 
       assert_receive :ready
       assert_receive :ready
@@ -679,11 +686,11 @@ defmodule PgdSupervisorTest do
         Process.sleep(:infinity)
       end
 
-      child_fun = Supervisor.child_spec({Task, fun}, shutdown: 1)
-      child_tmt = Supervisor.child_spec({Task, tmt}, shutdown: 1)
-      assert {:ok, child1} = PgdSupervisor.start_child(sup, child_fun)
-      assert {:ok, child2} = PgdSupervisor.start_child(sup, child_tmt)
-      assert {:ok, child3} = PgdSupervisor.start_child(sup, child_fun)
+      child_fun = fn id -> Supervisor.child_spec({Task, fun}, id: id, shutdown: 1) end
+      child_tmt = fn id -> Supervisor.child_spec({Task, tmt}, id: id, shutdown: 1) end
+      assert {:ok, child1} = PgdSupervisor.start_child(sup, child_fun.(1))
+      assert {:ok, child2} = PgdSupervisor.start_child(sup, child_tmt.(2))
+      assert {:ok, child3} = PgdSupervisor.start_child(sup, child_fun.(3))
 
       assert_receive :ready
       Process.monitor(child1)
@@ -707,10 +714,13 @@ defmodule PgdSupervisorTest do
         receive(do: (_ -> exit(:normal)))
       end
 
-      child = Supervisor.child_spec({Task, fun}, shutdown: :infinity, restart: :permanent)
-      assert {:ok, child1} = PgdSupervisor.start_child(sup, child)
-      assert {:ok, child2} = PgdSupervisor.start_child(sup, child)
-      assert {:ok, child3} = PgdSupervisor.start_child(sup, child)
+      child = fn id ->
+        Supervisor.child_spec({Task, fun}, id: id, shutdown: :infinity, restart: :permanent)
+      end
+
+      assert {:ok, child1} = PgdSupervisor.start_child(sup, child.(1))
+      assert {:ok, child2} = PgdSupervisor.start_child(sup, child.(2))
+      assert {:ok, child3} = PgdSupervisor.start_child(sup, child.(3))
 
       assert_receive :ready
       assert_receive :ready
@@ -785,12 +795,14 @@ defmodule PgdSupervisorTest do
   end
 
   defp sleepy_worker(opts \\ []) do
+    id = :crypto.strong_rand_bytes(10)
     mfa = {Task, :start_link, [Process, :sleep, [:infinity]]}
-    Supervisor.child_spec(%{id: Task, start: mfa}, opts)
+    Supervisor.child_spec(%{id: {Task, id}, start: mfa}, opts)
   end
 
   defp current_module_worker(args, opts \\ []) do
-    Supervisor.child_spec(%{id: __MODULE__, start: {__MODULE__, :start_link, args}}, opts)
+    id = :crypto.strong_rand_bytes(10)
+    Supervisor.child_spec(%{id: {__MODULE__, id}, start: {__MODULE__, :start_link, args}}, opts)
   end
 
   defp assert_kill(pid, reason) do
