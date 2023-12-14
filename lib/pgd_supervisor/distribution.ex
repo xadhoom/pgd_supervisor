@@ -22,7 +22,7 @@ defmodule PgdSupervisor.Distribution do
     :syn.join(scope, member_group(Node.self()), self())
   end
 
-  @spec child_join(scope_t(), String.t(), Node.t(), pid(), pid(), Child.spec_t()) ::
+  @spec child_join(scope_t(), Child.id_t(), Node.t(), pid(), pid(), Child.spec_t()) ::
           :ok | {:error, term()}
   def child_join(scope, id, node, supervisor, child_pid, child_spec) do
     child = %Child{
@@ -43,7 +43,7 @@ defmodule PgdSupervisor.Distribution do
     end
   end
 
-  @spec find_child(scope_t(), String.t() | pid()) :: {:ok, Child.t()} | {:error, :not_found}
+  @spec find_child(scope_t(), Child.id_t() | pid()) :: {:ok, Child.t()} | {:error, :not_found}
   def find_child(scope, pid) when is_pid(pid) do
     find_child_with_fn(
       scope,
@@ -63,6 +63,22 @@ defmodule PgdSupervisor.Distribution do
       fn
         {:child, %Child{id: ^id} = c} ->
           {:ok, c}
+
+        _ ->
+          false
+      end
+    )
+  end
+
+  @spec find_spec(scope_t(), Child.id_t()) :: {:ok, Child.spec_t()} | {:error, :not_found}
+  def find_spec(scope, child_id) do
+    scope
+    |> spec_groups()
+    |> Enum.find_value(
+      {:error, :not_found},
+      fn
+        {:spec, {^child_id, _, _, _, _, _} = s} ->
+          {:ok, s}
 
         _ ->
           false

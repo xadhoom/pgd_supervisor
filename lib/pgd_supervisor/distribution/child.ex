@@ -3,10 +3,11 @@ defmodule PgdSupervisor.Distribution.Child do
   Distributed child structure
   """
 
+  @type id_t :: String.t()
   @type spec_t :: any()
 
   @type t :: %__MODULE__{
-          id: String.t(),
+          id: id_t(),
           pid: pid(),
           node: Node.t(),
           supervisor_pid: pid(),

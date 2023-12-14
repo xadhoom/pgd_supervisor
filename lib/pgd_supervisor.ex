@@ -139,8 +139,8 @@ defmodule PgdSupervisor do
 
   """
 
-  alias PgdSupervisor.Distribution.Child
   alias PgdSupervisor.Distribution
+  alias PgdSupervisor.Distribution.Child
 
   @behaviour GenServer
 
@@ -401,8 +401,11 @@ defmodule PgdSupervisor do
 
   defp validate_and_start_child(supervisor, child_spec) do
     case validate_child(child_spec) do
-      {:ok, child} -> call(supervisor, {:start_child, child})
-      error -> {:error, error}
+      {:ok, child} ->
+        call(supervisor, {:start_child, child})
+
+      error ->
+        {:error, error}
     end
   end
 
@@ -835,19 +838,20 @@ defmodule PgdSupervisor do
     end
   end
 
-  defp generate_child_id({_id, mfa, restart, shutdown, type, modules}) do
-    id = UUID.uuid4()
-    {id, {id, mfa, restart, shutdown, type, modules}}
-  end
+  defp handle_start_child({child_id, _mfa, _restart, _shutdown, _type, _modules} = child, state) do
+    case Distribution.find_spec(state.scope, child_id) do
+      {:error, :not_found} ->
+        {assigned_node, assigned_supervisor} =
+          Distribution.member_for_child(state.scope, child_id)
 
-  defp handle_start_child({_id, _mfa, _restart, _shutdown, _type, _modules} = child, state) do
-    {child_id, child} = generate_child_id(child)
-    {assigned_node, assigned_supervisor} = Distribution.member_for_child(state.scope, child_id)
+        case assigned_supervisor do
+          nil -> {:reply, {:error, :remote_supervisor_not_found}, state}
+          pid when pid == self() -> start_local_child(child, state)
+          _ -> start_remote_child(child, {assigned_node, assigned_supervisor}, state)
+        end
 
-    case assigned_supervisor do
-      nil -> {:reply, {:error, :remote_supervisor_not_found}, state}
-      pid when pid == self() -> start_local_child(child, state)
-      _ -> start_remote_child(child, {assigned_node, assigned_supervisor}, state)
+      _ ->
+        {:reply, {:error, :already_present}, state}
     end
   end
 
@@ -1028,7 +1032,7 @@ defmodule PgdSupervisor do
       {child_id, _, _, _, _, _} = child_spec
       {assigned_node, _assigned_sup} = Distribution.member_for_child(state.scope, child_id)
 
-      if assigned_node == Node.self() do
+      if assigned_node == Node.self() and not child_running?(state, child_id) do
         {_, _, state} = start_local_child(child_spec, state)
         state
       else
@@ -1038,6 +1042,22 @@ defmodule PgdSupervisor do
 
     state = Distribution.reduce_child(state.scope, state, maybe_redistribute)
     Distribution.reduce_specs(state.scope, state, maybe_start_missing)
+  end
+
+  defp child_running?(%{children: children}, child_id) do
+    children
+    |> Map.filter(fn
+      {_pid, {^child_id, _, _, _, _, _}} ->
+        true
+
+      _ ->
+        false
+    end)
+    |> map_size()
+    |> case do
+      0 -> false
+      _ -> true
+    end
   end
 
   defp maybe_stop_child(%Child{} = c, assigned_node, _assigned_sup, state) do

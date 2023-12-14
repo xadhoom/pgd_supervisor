@@ -65,7 +65,6 @@ defmodule PgdSupervisor.MixProject do
     [
       {:syn, "~> 3.3"},
       {:libring, "~> 1.6"},
-      {:uuid, "~> 1.1"},
       {:local_cluster, "~> 1.2", only: [:test]},
       {:ex_doc, "~> 0.30", only: [:dev], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
