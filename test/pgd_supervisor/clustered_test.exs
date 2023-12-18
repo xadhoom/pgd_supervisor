@@ -141,6 +141,24 @@ defmodule PgdSupervisor.ClusteredTest do
     end
   end
 
+  describe "it is not possible to start children with the same id" do
+    test "on the same node" do
+      [node1, _node2] = start_nodes(:test_app, "foo", 2)
+      child_spec_1 = Worker.child_spec(:init_args_a)
+
+      {:ok, _pid1} = start_child(node1, child_spec_1)
+      assert {:error, :already_present} = start_child(node1, child_spec_1)
+    end
+
+    test "on a different node" do
+      [node1, node2] = start_nodes(:test_app, "foo", 2)
+      child_spec_1 = Worker.child_spec(:init_args_a)
+
+      {:ok, _pid1} = start_child(node1, child_spec_1)
+      assert {:error, :already_present} = start_child(node2, child_spec_1)
+    end
+  end
+
   describe "which_children/2" do
     test "returns children running on the node when called with :local" do
       [node1, node2] = start_nodes(:test_app, "foo", 2)
