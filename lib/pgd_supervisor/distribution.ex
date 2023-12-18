@@ -70,6 +70,14 @@ defmodule PgdSupervisor.Distribution do
     )
   end
 
+  @spec list_children(scope_t()) :: list(Child.t())
+  def list_children(scope) do
+    child_groups(scope)
+    |> Enum.map(fn {:child, %Child{} = c} ->
+      c
+    end)
+  end
+
   @spec find_spec(scope_t(), Child.id_t()) :: {:ok, Child.spec_t()} | {:error, :not_found}
   def find_spec(scope, child_id) do
     scope

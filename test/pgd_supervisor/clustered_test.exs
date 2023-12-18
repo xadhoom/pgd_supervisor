@@ -165,16 +165,16 @@ defmodule PgdSupervisor.ClusteredTest do
     test "returns all children running on the node when called with :global" do
       [node1, node2] = start_nodes(:test_app, "foo", 2)
 
-      child_spec_1 = Worker.child_spec(:init_args_1)
-      child_spec_2 = Worker.child_spec(:init_args_2)
+      child_spec_1 = Worker.child_spec(:init_args_a)
+      child_spec_2 = Worker.child_spec(:init_args_b)
 
       {:ok, pid1} = start_child(node1, child_spec_1)
       {:ok, pid2} = start_child(node2, child_spec_2)
 
       assert_async do
         assert [
-                 {:undefined, wpid1, :worker, [Worker]},
-                 {:undefined, wpid2, :worker, [Worker]}
+                 {{Worker, :init_args_a}, wpid1, :worker, [Worker]},
+                 {{Worker, :init_args_b}, wpid2, :worker, [Worker]}
                ] = :rpc.call(node1, PgdSupervisor, :which_children, [@supervisor, :global])
 
         assert pid1 in [wpid1, wpid2]
@@ -183,8 +183,8 @@ defmodule PgdSupervisor.ClusteredTest do
 
       assert_async do
         assert [
-                 {:undefined, wpid1, :worker, [Worker]},
-                 {:undefined, wpid2, :worker, [Worker]}
+                 {{Worker, :init_args_a}, wpid1, :worker, [Worker]},
+                 {{Worker, :init_args_b}, wpid2, :worker, [Worker]}
                ] = :rpc.call(node2, PgdSupervisor, :which_children, [@supervisor, :global])
 
         assert pid1 in [wpid1, wpid2]

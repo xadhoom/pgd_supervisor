@@ -747,7 +747,15 @@ defmodule PgdSupervisor do
   end
 
   def handle_call({:which_children, :global}, _from, state) do
-    {:reply, {:error, :not_implemented}, state}
+    reply =
+      state.scope
+      |> Distribution.list_children()
+      |> Enum.map(fn %Child{} = c ->
+        {id, _, _, _, type, modules} = c.spec
+        {id, c.pid, type, modules}
+      end)
+
+    {:reply, reply, state}
   end
 
   def handle_call(:count_children, _from, state) do
@@ -774,7 +782,25 @@ defmodule PgdSupervisor do
   end
 
   def handle_call({:count_children, :global}, _from, state) do
-    {:reply, {:error, :not_implemented}, state}
+    children = Distribution.list_children(state.scope)
+
+    {active, workers, supervisors} =
+      Enum.reduce(children, {0, 0, 0}, fn
+        %Child{} = c, {active, worker, supervisor} ->
+          case c.spec do
+            {_, _, _, _, :worker, _} -> {active + 1, worker + 1, supervisor}
+            {_, _, _, _, :supervisor, _} -> {active + 1, worker, supervisor + 1}
+          end
+      end)
+
+    reply = [
+      specs: Enum.count(children),
+      active: active,
+      supervisors: supervisors,
+      workers: workers
+    ]
+
+    {:reply, reply, state}
   end
 
   def handle_call({:terminate_child, pid}, _from, %{children: _children} = state) do
