@@ -1066,6 +1066,7 @@ defmodule PgdSupervisor do
       end
     end
 
+    Distribution.check_members(state.scope)
     state = Distribution.reduce_child(state.scope, state, maybe_redistribute)
     Distribution.reduce_specs(state.scope, state, maybe_start_missing)
   end

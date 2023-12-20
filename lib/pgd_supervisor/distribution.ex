@@ -151,8 +151,14 @@ defmodule PgdSupervisor.Distribution do
     |> then(&multi_leave(scope, spec_group(child_spec), &1))
   end
 
-  @spec create_ring(scope_t()) :: scope_t()
-  defp create_ring(scope) do
+  @spec check_members(scope_t()) :: :ok
+  def check_members(scope) do
+    create_ring(scope, check_members: true)
+    :ok
+  end
+
+  @spec create_ring(scope_t(), list({:check_members, boolean()})) :: scope_t()
+  defp create_ring(scope, opts \\ []) do
     maybe_create_hash_ring(scope)
 
     nodes =
@@ -162,6 +168,16 @@ defmodule PgdSupervisor.Distribution do
         {:member, node}, acc -> [node | acc]
         _, acc -> acc
       end)
+
+    if Keyword.get(opts, :check_members, false) do
+      current_nodes = MapSet.new(nodes)
+
+      scope
+      |> HashRing.Managed.nodes()
+      |> MapSet.new()
+      |> MapSet.difference(current_nodes)
+      |> Enum.each(&HashRing.Managed.remove_node(scope, &1))
+    end
 
     # build a consistent hash ring of existing nodes to distribute
     # child processes among them
