@@ -126,7 +126,7 @@ defmodule PgdSupervisor.Distribution do
   def node_for_child(scope, child_spec) do
     scope
     |> create_ring()
-    |> HashRing.key_to_node(child_spec)
+    |> HashRing.Managed.key_to_node(child_spec)
   end
 
   @spec member_for_node(scope_t(), Node.t()) :: nil | pid()
@@ -151,14 +151,29 @@ defmodule PgdSupervisor.Distribution do
     |> then(&multi_leave(scope, spec_group(child_spec), &1))
   end
 
-  @spec create_ring(scope_t()) :: HashRing.t()
+  @spec create_ring(scope_t()) :: scope_t()
   defp create_ring(scope) do
-    groups = :syn.group_names(scope)
+    maybe_create_hash_ring(scope)
+
+    nodes =
+      scope
+      |> :syn.group_names()
+      |> Enum.reduce([], fn
+        {:member, node}, acc -> [node | acc]
+        _, acc -> acc
+      end)
 
     # build a consistent hash ring of existing nodes to distribute
     # child processes among them
-    for {:member, node} <- groups, reduce: HashRing.new() do
-      acc -> HashRing.add_node(acc, node)
+    HashRing.Managed.add_nodes(scope, nodes)
+    scope
+  end
+
+  @spec maybe_create_hash_ring(scope_t()) :: pid()
+  defp maybe_create_hash_ring(scope) do
+    case HashRing.Managed.new(scope) do
+      {:ok, pid} -> pid
+      {:error, {:already_started, pid}} -> pid
     end
   end
 
