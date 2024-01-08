@@ -822,10 +822,12 @@ defmodule PgdSupervisor do
   def handle_call({:start_child, child}, _from, state) do
     %{children: children, max_children: max_children} = state
 
-    if map_size(children) < max_children do
-      handle_start_child(child, state)
-    else
-      {:reply, {:error, :max_children}, state}
+    {child_id, _mfa, _restart, _shutdown, _type, _modules} = child
+
+    case {map_size(children), Distribution.find_spec(state.scope, child_id)} do
+      {n, {:error, :not_found}} when n < max_children -> handle_start_child(child, state)
+      {_n, {:error, :not_found}} -> {:reply, {:error, :max_children}, state}
+      {_n, _} -> {:reply, {:error, :already_present}, state}
     end
   end
 
@@ -848,20 +850,26 @@ defmodule PgdSupervisor do
   end
 
   defp handle_start_child({child_id, _mfa, _restart, _shutdown, _type, _modules} = child, state) do
-    case Distribution.find_spec(state.scope, child_id) do
-      {:error, :not_found} ->
-        {assigned_node, assigned_supervisor} =
-          Distribution.member_for_child(state.scope, child_id)
+    {assigned_node, assigned_supervisor} =
+      Distribution.member_for_child(state.scope, child_id)
 
-        case assigned_supervisor do
-          nil -> {:reply, {:error, :remote_supervisor_not_found}, state}
-          pid when pid == self() -> start_local_child(child, state)
-          _ -> start_remote_child(child, {assigned_node, assigned_supervisor}, state)
-        end
-
+    case assigned_supervisor do
+      nil -> {:reply, {:error, :remote_supervisor_not_found}, state}
+      pid when pid == self() -> start_local_child(child, state)
       _ ->
-        {:reply, {:error, :already_present}, state}
+        child
+        |> start_remote_child({assigned_node, assigned_supervisor}, state)
+        |> maybe_update_ring_and_retry(child, state)
     end
+  end
+
+  defp maybe_update_ring_and_retry({:reply, {:badrpc, :nodedown}, state}, child, _state) do
+    Distribution.check_members(state.scope)
+    handle_start_child(child, state)
+  end
+
+  defp maybe_update_ring_and_retry(res, _child, _state) do
+    res
   end
 
   defp start_local_child(
