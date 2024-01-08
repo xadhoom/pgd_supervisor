@@ -850,8 +850,7 @@ defmodule PgdSupervisor do
   end
 
   defp handle_start_child({child_id, _mfa, _restart, _shutdown, _type, _modules} = child, state) do
-    {assigned_node, assigned_supervisor} =
-      Distribution.member_for_child(state.scope, child_id)
+    {assigned_node, assigned_supervisor} = Distribution.member_for_child(state.scope, child_id)
 
     case assigned_supervisor do
       nil ->
