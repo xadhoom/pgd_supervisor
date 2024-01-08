@@ -1,4 +1,4 @@
-defmodule PgdSupervisor do
+defmodule SynSupervisor do
   @moduledoc ~S"""
   A distributed, dynamic supervisor.
   Heavily derived from Elixir DynamicSupervisor.
@@ -7,9 +7,9 @@ defmodule PgdSupervisor do
 
   The `Supervisor` module was designed to handle mostly static children
   that are started in the given order when the supervisor starts. A
-  `PgdSupervisor` starts with no children. Instead, children are
+  `SynSupervisor` starts with no children. Instead, children are
   started on demand via `start_child/2` and there is no ordering between
-  children. This allows the `PgdSupervisor` to hold millions of
+  children. This allows the `SynSupervisor` to hold millions of
   children by using efficient data structures and to execute certain
   operations, such as shutting down, concurrently.
 
@@ -18,7 +18,7 @@ defmodule PgdSupervisor do
   A dynamic supervisor is started with no children and often a name:
 
       children = [
-        {PgdSupervisor, name: MyApp.PgdSupervisor, strategy: :one_for_one}
+        {SynSupervisor, name: MyApp.SynSupervisor, strategy: :one_for_one}
       ]
 
       Supervisor.start_link(children, strategy: :one_for_one)
@@ -51,53 +51,53 @@ defmodule PgdSupervisor do
   We can use `start_child/2` with a child specification to start a `Counter`
   server:
 
-      {:ok, counter1} = PgdSupervisor.start_child(MyApp.PgdSupervisor, {Counter, 0})
+      {:ok, counter1} = SynSupervisor.start_child(MyApp.SynSupervisor, {Counter, 0})
       Counter.inc(counter1)
       #=> 0
 
-      {:ok, counter2} = PgdSupervisor.start_child(MyApp.PgdSupervisor, {Counter, 10})
+      {:ok, counter2} = SynSupervisor.start_child(MyApp.SynSupervisor, {Counter, 10})
       Counter.inc(counter2)
       #=> 10
 
-      PgdSupervisor.count_children(MyApp.PgdSupervisor)
+      SynSupervisor.count_children(MyApp.SynSupervisor)
       #=> %{active: 2, specs: 2, supervisors: 0, workers: 2}
 
   ## Scalability and partitioning
 
-  The `PgdSupervisor` is a single process responsible for starting
-  other processes. In some applications, the `PgdSupervisor` may
+  The `SynSupervisor` is a single process responsible for starting
+  other processes. In some applications, the `SynSupervisor` may
   become a bottleneck. To address this, you can start multiple instances
-  of the `PgdSupervisor` and then pick a "random" instance to start
+  of the `SynSupervisor` and then pick a "random" instance to start
   the child on.
 
   Instead of:
 
       children = [
-        {PgdSupervisor, name: MyApp.PgdSupervisor}
+        {SynSupervisor, name: MyApp.SynSupervisor}
       ]
 
   and:
 
-      PgdSupervisor.start_child(MyApp.PgdSupervisor, {Counter, 0})
+      SynSupervisor.start_child(MyApp.SynSupervisor, {Counter, 0})
 
   You can do this:
 
       children = [
         {PartitionSupervisor,
-         child_spec: PgdSupervisor,
-         name: MyApp.PgdSupervisors}
+         child_spec: SynSupervisor,
+         name: MyApp.SynSupervisors}
       ]
 
   and then:
 
-      PgdSupervisor.start_child(
-        {:via, PartitionSupervisor, {MyApp.PgdSupervisors, self()}},
+      SynSupervisor.start_child(
+        {:via, PartitionSupervisor, {MyApp.SynSupervisors, self()}},
         {Counter, 0}
       )
 
   In the code above, we start a partition supervisor that will by default
   start a dynamic supervisor for each core in your machine. Then, instead
-  of calling the `PgdSupervisor` by name, you call it through the
+  of calling the `SynSupervisor` by name, you call it through the
   partition supervisor, using `self()` as the routing key. This means each
   process will be assigned one of the existing dynamic supervisors.
   Read the `PartitionSupervisor` docs for more information.
@@ -107,29 +107,29 @@ defmodule PgdSupervisor do
   Similar to `Supervisor`, dynamic supervisors also support module-based
   supervisors.
 
-      defmodule MyApp.PgdSupervisor do
+      defmodule MyApp.SynSupervisor do
         # Automatically defines child_spec/1
-        use PgdSupervisor
+        use SynSupervisor
 
         def start_link(init_arg) do
-          PgdSupervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
+          SynSupervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
         end
 
         @impl true
         def init(_init_arg) do
-          PgdSupervisor.init(strategy: :one_for_one)
+          SynSupervisor.init(strategy: :one_for_one)
         end
       end
 
   See the `Supervisor` docs for a discussion of when you may want to use
   module-based supervisors. A `@doc` annotation immediately preceding
-  `use PgdSupervisor` will be attached to the generated `child_spec/1`
+  `use SynSupervisor` will be attached to the generated `child_spec/1`
   function.
 
-  > #### `use PgdSupervisor` {: .info}
+  > #### `use SynSupervisor` {: .info}
   >
-  > When you `use PgdSupervisor`, the `PgdSupervisor` module will
-  > set `@behaviour PgdSupervisor` and define a `child_spec/1`
+  > When you `use SynSupervisor`, the `SynSupervisor` module will
+  > set `@behaviour SynSupervisor` and define a `child_spec/1`
   > function, so your module can be used as a child in a supervision tree.
 
   ## Name registration
@@ -139,15 +139,15 @@ defmodule PgdSupervisor do
 
   """
 
-  alias PgdSupervisor.Distribution
-  alias PgdSupervisor.Distribution.Child
+  alias SynSupervisor.Distribution
+  alias SynSupervisor.Distribution.Child
 
   @behaviour GenServer
 
   @doc """
   Callback invoked to start the supervisor and during hot code upgrades.
 
-  Developers typically invoke `PgdSupervisor.init/1` at the end of
+  Developers typically invoke `SynSupervisor.init/1` at the end of
   their init callback to return the proper supervision flags.
   """
   @callback init(init_arg :: term) :: {:ok, sup_flags()} | :ignore
@@ -212,7 +212,7 @@ defmodule PgdSupervisor do
   @doc since: "1.6.1"
   def child_spec(options) when is_list(options) do
     id =
-      case Keyword.get(options, :name, PgdSupervisor) do
+      case Keyword.get(options, :name, SynSupervisor) do
         name when is_atom(name) -> name
         {:global, name} -> name
         {:via, _module, name} -> name
@@ -220,7 +220,7 @@ defmodule PgdSupervisor do
 
     %{
       id: id,
-      start: {PgdSupervisor, :start_link, [options]},
+      start: {SynSupervisor, :start_link, [options]},
       type: :supervisor
     }
   end
@@ -228,7 +228,7 @@ defmodule PgdSupervisor do
   @doc false
   defmacro __using__(opts) do
     quote location: :keep, bind_quoted: [opts: opts] do
-      @behaviour PgdSupervisor
+      @behaviour SynSupervisor
       unless Module.has_attribute?(__MODULE__, :doc) do
         @doc """
         Returns a specification to start this module under a supervisor.
@@ -255,10 +255,10 @@ defmodule PgdSupervisor do
   Starts a supervisor with the given options.
 
   This function is typically not invoked directly, instead it is invoked
-  when using a `PgdSupervisor` as a child of another supervisor:
+  when using a `SynSupervisor` as a child of another supervisor:
 
       children = [
-        {PgdSupervisor, name: MySupervisor}
+        {SynSupervisor, name: MySupervisor}
       ]
 
   If the supervisor is successfully spawned, this function returns
@@ -273,8 +273,8 @@ defmodule PgdSupervisor do
 
   ## Options
 
-    * `:scope` - scope (`:pg` scope) under which other PgdSupervisor instances
-      are grouped in the cluster. For different PgdSupervisor clusters, use
+    * `:scope` - scope (`:pg` scope) under which other SynSupervisor instances
+      are grouped in the cluster. For different SynSupervisor clusters, use
       different scopes.
 
     * `:sync_interval` - interval in milliseconds, how often the supervisor
@@ -600,7 +600,7 @@ defmodule PgdSupervisor do
   ## Examples
 
       def init(_arg) do
-        PgdSupervisor.init(max_children: 1000)
+        SynSupervisor.init(max_children: 1000)
       end
 
   """
@@ -648,7 +648,7 @@ defmodule PgdSupervisor do
             is_tuple(name) -> name
           end
 
-        state = %PgdSupervisor{mod: mod, args: init_arg, name: name}
+        state = %SynSupervisor{mod: mod, args: init_arg, name: name}
 
         case init(state, flags) do
           {:ok, state} ->
@@ -985,7 +985,7 @@ defmodule PgdSupervisor do
   def handle_info(msg, state) do
     :logger.error(
       %{
-        label: {PgdSupervisor, :unexpected_msg},
+        label: {SynSupervisor, :unexpected_msg},
         report: %{
           msg: msg
         }
@@ -1358,6 +1358,6 @@ defmodule PgdSupervisor do
         label: {__MODULE__, :unexpected_msg},
         report: %{msg: msg}
       }) do
-    {~c"PgdSupervisor received unexpected message: ~p~n", [msg]}
+    {~c"SynSupervisor received unexpected message: ~p~n", [msg]}
   end
 end

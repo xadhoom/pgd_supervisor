@@ -1,9 +1,9 @@
-defmodule PgdSupervisor.Distribution do
+defmodule SynSupervisor.Distribution do
   @moduledoc """
-  Module to store and retrieve PgdSupervisor's distribution information
+  Module to store and retrieve SynSupervisor's distribution information
   """
 
-  alias PgdSupervisor.Distribution.Child
+  alias SynSupervisor.Distribution.Child
 
   @type scope_t() :: atom()
 

@@ -1,4 +1,4 @@
-defmodule PgdSupervisor.ClusteredTest do
+defmodule SynSupervisor.ClusteredTest do
   @moduledoc false
   use ExUnit.Case, async: false
 
@@ -6,7 +6,7 @@ defmodule PgdSupervisor.ClusteredTest do
 
   @supervisor TestApp.DistributedSupervisor
 
-  alias PgdSupervisor.Test.Support.Worker
+  alias SynSupervisor.Test.Support.Worker
 
   setup do
     on_exit(fn ->
@@ -44,8 +44,8 @@ defmodule PgdSupervisor.ClusteredTest do
 
     assert_async do
       assert %{
-               ^node1 => [{{Worker, :init_args_a}, ^pid1, :worker, [Worker]}],
-               ^node2 => [{{Worker, :init_args_b}, ^pid2, :worker, [Worker]}]
+               ^node1 => [{{Worker, :init_args_b}, ^pid2, :worker, [Worker]}],
+               ^node2 => [{{Worker, :init_args_a}, ^pid1, :worker, [Worker]}]
              } = local_children([node1, node2])
     end
   end
@@ -54,8 +54,8 @@ defmodule PgdSupervisor.ClusteredTest do
     [node1, node2] = start_nodes(:test_app, "foo", 2)
 
     child_spec_1 = Worker.child_spec(:a)
-    child_spec_2 = Worker.child_spec(:b)
-    child_spec_3 = Worker.child_spec(:c)
+    child_spec_2 = Worker.child_spec(:c)
+    child_spec_3 = Worker.child_spec(:e)
 
     {:ok, pid1} = start_child(node1, child_spec_1)
     {:ok, pid2} = start_child(node1, child_spec_2)
@@ -65,10 +65,10 @@ defmodule PgdSupervisor.ClusteredTest do
       assert %{
                ^node1 => [
                  {{Worker, :a}, ^pid1, :worker, [Worker]},
-                 {{Worker, :c}, ^pid3, :worker, [Worker]}
+                 {{Worker, :e}, ^pid3, :worker, [Worker]}
                ],
                ^node2 => [
-                 {{Worker, :b}, ^pid2, :worker, [Worker]}
+                 {{Worker, :c}, ^pid2, :worker, [Worker]}
                ]
              } = local_children([node1, node2])
     end
@@ -78,8 +78,8 @@ defmodule PgdSupervisor.ClusteredTest do
 
     assert_async do
       assert %{
-               ^node1 => [{{Worker, :c}, _, :worker, [Worker]}],
-               ^node2 => [{{Worker, :b}, _, :worker, [Worker]}],
+               ^node1 => [{{Worker, :e}, _, :worker, [Worker]}],
+               ^node2 => [{{Worker, :c}, _, :worker, [Worker]}],
                ^node3 => [{{Worker, :a}, _, :worker, [Worker]}]
              } = local_children([node1, node2, node3])
     end
@@ -89,8 +89,8 @@ defmodule PgdSupervisor.ClusteredTest do
     [node1, node2, node3] = start_nodes(:test_app, "foo", 3)
 
     child_spec_1 = Worker.child_spec(:a)
-    child_spec_2 = Worker.child_spec(:b)
-    child_spec_3 = Worker.child_spec(:e)
+    child_spec_2 = Worker.child_spec(:e)
+    child_spec_3 = Worker.child_spec(:c)
 
     {:ok, _pid1} = start_child(node1, child_spec_1)
     {:ok, _pid2} = start_child(node1, child_spec_2)
@@ -98,9 +98,9 @@ defmodule PgdSupervisor.ClusteredTest do
 
     assert_async do
       assert %{
-               ^node1 => [{{Worker, :a}, _, :worker, [Worker]}],
-               ^node2 => [{{Worker, :b}, _, :worker, [Worker]}],
-               ^node3 => [{{Worker, :e}, _, :worker, [Worker]}]
+               ^node1 => [{{Worker, :e}, _, :worker, [Worker]}],
+               ^node2 => [{{Worker, :c}, _, :worker, [Worker]}],
+               ^node3 => [{{Worker, :a}, _, :worker, [Worker]}]
              } = local_children([node1, node2, node3])
     end
 
@@ -113,7 +113,7 @@ defmodule PgdSupervisor.ClusteredTest do
                  {{Worker, :e}, _, :worker, [Worker]}
                ],
                ^node2 => [
-                 {{Worker, :b}, _, :worker, [Worker]}
+                 {{Worker, :c}, _, :worker, [Worker]}
                ]
              } = local_children([node1, node2])
     end
@@ -130,13 +130,13 @@ defmodule PgdSupervisor.ClusteredTest do
       {:ok, _pid2} = start_child(node2, child_spec_2)
 
       assert_async do
-        assert [{{Worker, :init_args_a}, _, :worker, [Worker]}] =
-                 :rpc.call(node1, PgdSupervisor, :which_children, [@supervisor])
+        assert [{{Worker, :init_args_b}, _, :worker, [Worker]}] =
+                 :rpc.call(node1, SynSupervisor, :which_children, [@supervisor])
       end
 
       assert_async do
-        assert [{{Worker, :init_args_b}, _, :worker, [Worker]}] =
-                 :rpc.call(node2, PgdSupervisor, :which_children, [@supervisor])
+        assert [{{Worker, :init_args_a}, _, :worker, [Worker]}] =
+                 :rpc.call(node2, SynSupervisor, :which_children, [@supervisor])
       end
     end
   end
@@ -170,13 +170,13 @@ defmodule PgdSupervisor.ClusteredTest do
       {:ok, _pid2} = start_child(node2, child_spec_2)
 
       assert_async do
-        assert [{{Worker, :init_args_a}, _, :worker, [Worker]}] =
-                 :rpc.call(node1, PgdSupervisor, :which_children, [@supervisor, :local])
+        assert [{{Worker, :init_args_b}, _, :worker, [Worker]}] =
+                 :rpc.call(node1, SynSupervisor, :which_children, [@supervisor, :local])
       end
 
       assert_async do
-        assert [{{Worker, :init_args_b}, _, :worker, [Worker]}] =
-                 :rpc.call(node2, PgdSupervisor, :which_children, [@supervisor, :local])
+        assert [{{Worker, :init_args_a}, _, :worker, [Worker]}] =
+                 :rpc.call(node2, SynSupervisor, :which_children, [@supervisor, :local])
       end
     end
 
@@ -193,7 +193,7 @@ defmodule PgdSupervisor.ClusteredTest do
         assert [
                  {{Worker, :init_args_a}, wpid1, :worker, [Worker]},
                  {{Worker, :init_args_b}, wpid2, :worker, [Worker]}
-               ] = :rpc.call(node1, PgdSupervisor, :which_children, [@supervisor, :global])
+               ] = :rpc.call(node1, SynSupervisor, :which_children, [@supervisor, :global])
 
         assert pid1 in [wpid1, wpid2]
         assert pid2 in [wpid1, wpid2]
@@ -203,7 +203,7 @@ defmodule PgdSupervisor.ClusteredTest do
         assert [
                  {{Worker, :init_args_a}, wpid1, :worker, [Worker]},
                  {{Worker, :init_args_b}, wpid2, :worker, [Worker]}
-               ] = :rpc.call(node2, PgdSupervisor, :which_children, [@supervisor, :global])
+               ] = :rpc.call(node2, SynSupervisor, :which_children, [@supervisor, :global])
 
         assert pid1 in [wpid1, wpid2]
         assert pid2 in [wpid1, wpid2]
@@ -223,12 +223,12 @@ defmodule PgdSupervisor.ClusteredTest do
 
       assert_async do
         assert %{active: 1, specs: 1, supervisors: 0, workers: 1} =
-                 :rpc.call(node1, PgdSupervisor, :count_children, [@supervisor])
+                 :rpc.call(node1, SynSupervisor, :count_children, [@supervisor])
       end
 
       assert_async do
         assert %{active: 1, specs: 1, supervisors: 0, workers: 1} =
-                 :rpc.call(node2, PgdSupervisor, :count_children, [@supervisor])
+                 :rpc.call(node2, SynSupervisor, :count_children, [@supervisor])
       end
     end
   end
@@ -245,12 +245,12 @@ defmodule PgdSupervisor.ClusteredTest do
 
       assert_async do
         assert %{active: 1, specs: 1, supervisors: 0, workers: 1} =
-                 :rpc.call(node1, PgdSupervisor, :count_children, [@supervisor, :local])
+                 :rpc.call(node1, SynSupervisor, :count_children, [@supervisor, :local])
       end
 
       assert_async do
         assert %{active: 1, specs: 1, supervisors: 0, workers: 1} =
-                 :rpc.call(node2, PgdSupervisor, :count_children, [@supervisor, :local])
+                 :rpc.call(node2, SynSupervisor, :count_children, [@supervisor, :local])
       end
     end
 
@@ -265,23 +265,23 @@ defmodule PgdSupervisor.ClusteredTest do
 
       assert_async do
         assert %{active: 2, specs: 2, supervisors: 0, workers: 2} =
-                 :rpc.call(node1, PgdSupervisor, :count_children, [@supervisor, :global])
+                 :rpc.call(node1, SynSupervisor, :count_children, [@supervisor, :global])
       end
 
       assert_async do
         assert %{active: 2, specs: 2, supervisors: 0, workers: 2} =
-                 :rpc.call(node2, PgdSupervisor, :count_children, [@supervisor, :global])
+                 :rpc.call(node2, SynSupervisor, :count_children, [@supervisor, :global])
       end
     end
   end
 
   defp start_child(node, child_spec) do
-    :rpc.call(node, PgdSupervisor, :start_child, [@supervisor, child_spec])
+    :rpc.call(node, SynSupervisor, :start_child, [@supervisor, child_spec])
   end
 
   defp local_children(nodes) do
     for node <- nodes, into: %{} do
-      local_children = :rpc.call(node, PgdSupervisor, :which_children, [@supervisor])
+      local_children = :rpc.call(node, SynSupervisor, :which_children, [@supervisor])
 
       {node, Enum.sort(local_children)}
     end
@@ -290,7 +290,7 @@ defmodule PgdSupervisor.ClusteredTest do
   defp start_nodes(app, prefix, n) do
     LocalCluster.start_nodes(prefix, n,
       applications: [:syn, :libring, app],
-      files: ["test/support/pgd_supervisor/worker.ex"]
+      files: ["test/support/syn_supervisor/worker.ex"]
     )
   end
 

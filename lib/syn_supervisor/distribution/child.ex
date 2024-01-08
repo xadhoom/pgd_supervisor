@@ -1,4 +1,4 @@
-defmodule PgdSupervisor.Distribution.Child do
+defmodule SynSupervisor.Distribution.Child do
   @moduledoc """
   Distributed child structure
   """

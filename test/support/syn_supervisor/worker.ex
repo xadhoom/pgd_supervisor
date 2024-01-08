@@ -1,4 +1,4 @@
-defmodule PgdSupervisor.Test.Support.Worker do
+defmodule SynSupervisor.Test.Support.Worker do
   @moduledoc false
   use GenServer
 

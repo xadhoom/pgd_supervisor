@@ -1,10 +1,10 @@
-defmodule PgdSupervisor.MixProject do
+defmodule SynSupervisor.MixProject do
   @moduledoc false
   use Mix.Project
 
   def project do
     [
-      app: :pgd_supervisor,
+      app: :syn_supervisor,
       version: "0.1.0",
       elixir: "~> 1.14",
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -12,10 +12,10 @@ defmodule PgdSupervisor.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       package: package(),
-      source_url: "https://github.com/VoiSmart/pgd_supervisor.git",
-      homepage_url: "https://github.com/VoiSmart/pgd_supervisor.git",
+      source_url: "https://github.com/VoiSmart/syn_supervisor.git",
+      homepage_url: "https://github.com/VoiSmart/syn_supervisor.git",
       description: description(),
-      name: "PgdSupervisor",
+      name: "SynSupervisor",
       docs: docs(),
       aliases: aliases()
     ]
@@ -49,7 +49,7 @@ defmodule PgdSupervisor.MixProject do
         "Matteo Brancaleoni <matteo.brancaleoni@voismart.it>"
       ],
       licenses: ["LGPL-3.0-only"],
-      links: %{"GitHub" => "https://github.com/VoiSmart/pgd_supervisor.git"},
+      links: %{"GitHub" => "https://github.com/VoiSmart/syn_supervisor.git"},
       files: ~w"lib mix.exs README.md LICENSE.md"
     ]
   end

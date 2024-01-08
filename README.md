@@ -1,23 +1,23 @@
-# PgdSupervisor
+# SynSupervisor
 
-**A PG-based, Distributed, Dynamic Supervisor**
+**A syn-based, Distributed, Dynamic Supervisor**
 
 ## Installation
 
 If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `pgd_supervisor` to your list of dependencies in `mix.exs`:
+by adding `syn_supervisor` to your list of dependencies in `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:pgd_supervisor, "~> 0.1"}
+    {:syn_supervisor, "~> 0.1"}
   ]
 end
 ```
 
 ## Documentation
 
-For the full documentation, head to [ExDoc](https://hexdocs.pm/pgd_supervisor).
+For the full documentation, head to [ExDoc](https://hexdocs.pm/syn_supervisor).
 
 ## Acknowledgments
 

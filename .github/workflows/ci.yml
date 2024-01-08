@@ -6,7 +6,7 @@ env:
 jobs:
   test:
     runs-on: ubuntu-22.04
-    name: PgdSupervisor on Elixir ${{matrix.elixir}} (OTP ${{matrix.otp}})
+    name: SynSupervisor on Elixir ${{matrix.elixir}} (OTP ${{matrix.otp}})
     strategy:
       matrix:
         otp: ['24.3', '25.2', '26.1']

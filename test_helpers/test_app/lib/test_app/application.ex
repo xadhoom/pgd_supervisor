@@ -6,7 +6,7 @@ defmodule TestApp.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      {PgdSupervisor, name: TestApp.DistributedSupervisor, scope: :test, sync_interval: 5}
+      {SynSupervisor, name: TestApp.DistributedSupervisor, scope: :test, sync_interval: 5}
     ]
 
     opts = [strategy: :one_for_one, name: TestApp.Supervisor]
