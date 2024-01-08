@@ -854,8 +854,12 @@ defmodule PgdSupervisor do
       Distribution.member_for_child(state.scope, child_id)
 
     case assigned_supervisor do
-      nil -> {:reply, {:error, :remote_supervisor_not_found}, state}
-      pid when pid == self() -> start_local_child(child, state)
+      nil ->
+        {:reply, {:error, :remote_supervisor_not_found}, state}
+
+      pid when pid == self() ->
+        start_local_child(child, state)
+
       _ ->
         child
         |> start_remote_child({assigned_node, assigned_supervisor}, state)
