@@ -477,15 +477,19 @@ defmodule SynSupervisor do
   end
 
   @doc """
-  Terminates the given child identified by `pid`.
+  Terminates the given child identified by `pid` or `child_id`.
 
   If successful, this function returns `:ok`. If there is no process with
   the given PID, this function returns `{:error, :not_found}`.
   """
   @doc since: "1.6.0"
-  @spec terminate_child(Supervisor.supervisor(), pid) :: :ok | {:error, :not_found}
+  @spec terminate_child(Supervisor.supervisor(), pid | term) :: :ok | {:error, :not_found}
   def terminate_child(supervisor, pid) when is_pid(pid) do
     call(supervisor, {:terminate_child, pid})
+  end
+
+  def terminate_child(supervisor, child_id) do
+    call(supervisor, {:terminate_child, child_id})
   end
 
   @doc """
@@ -803,18 +807,18 @@ defmodule SynSupervisor do
     {:reply, reply, state}
   end
 
-  def handle_call({:terminate_child, pid}, _from, %{children: _children} = state) do
-    case Distribution.find_child(state.scope, pid) do
+  def handle_call({:terminate_child, pid_or_child_id}, _from, %{children: _children} = state) do
+    case Distribution.find_child(state.scope, pid_or_child_id) do
       {:error, :not_found} ->
         # try local children anyway
-        terminate_local_children(pid, state)
+        terminate_local_children(pid_or_child_id, state)
 
       {:ok, %Child{node: node, supervisor_pid: supervisor} = c} ->
         if node == Node.self() do
           Distribution.untrack_spec(state.scope, c.spec)
-          terminate_local_children(pid, state)
+          terminate_local_children(c.pid, state)
         else
-          terminate_remote_children(node, supervisor, pid, state)
+          terminate_remote_children(node, supervisor, c.pid, state)
         end
     end
   end
@@ -831,7 +835,7 @@ defmodule SynSupervisor do
     end
   end
 
-  defp terminate_local_children(pid, %{children: children} = state) do
+  defp terminate_local_children(pid, %{children: children} = state) when is_pid(pid) do
     case children do
       %{^pid => info} ->
         :ok = terminate_children(%{pid => info}, state)
@@ -839,6 +843,18 @@ defmodule SynSupervisor do
 
       %{} ->
         {:reply, {:error, :not_found}, state}
+    end
+  end
+
+  defp terminate_local_children(child_id, %{children: children} = state) do
+    children
+    |> Enum.find(fn
+      {_pid, {^child_id, _, _, _, _, _}} -> true
+      _ -> false
+    end)
+    |> case do
+      nil -> {:reply, {:error, :not_found}, state}
+      {pid, _} -> terminate_local_children(pid, state)
     end
   end
 

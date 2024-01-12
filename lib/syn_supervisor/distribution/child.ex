@@ -3,7 +3,7 @@ defmodule SynSupervisor.Distribution.Child do
   Distributed child structure
   """
 
-  @type id_t :: String.t()
+  @type id_t :: any()
   @type spec_t :: any()
 
   @type t :: %__MODULE__{

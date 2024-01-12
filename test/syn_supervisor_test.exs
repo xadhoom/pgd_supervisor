@@ -792,6 +792,26 @@ defmodule SynSupervisorTest do
       assert {:error, :not_found} = SynSupervisor.terminate_child(sup, child_pid)
       assert %{workers: 0, active: 0} = SynSupervisor.count_children(sup)
     end
+
+    test "terminates child with child_id", %{scope: scope} do
+      {:ok, sup} = SynSupervisor.start_link(strategy: :one_for_one, scope: scope)
+
+      child_id = :crypto.strong_rand_bytes(10)
+      child = sleepy_worker_with_id(child_id, shutdown: :brutal_kill)
+      assert {:ok, child_pid} = SynSupervisor.start_child(sup, child)
+
+      Process.monitor(child_pid)
+      assert :ok = SynSupervisor.terminate_child(sup, child_id)
+      assert_receive {:DOWN, _, :process, ^child_pid, :killed}
+
+      assert {:error, :not_found} = SynSupervisor.terminate_child(sup, child_id)
+      assert %{workers: 0, active: 0} = SynSupervisor.count_children(sup)
+    end
+  end
+
+  defp sleepy_worker_with_id(id, opts) do
+    mfa = {Task, :start_link, [Process, :sleep, [:infinity]]}
+    Supervisor.child_spec(%{id: id, start: mfa}, opts)
   end
 
   defp sleepy_worker(opts \\ []) do

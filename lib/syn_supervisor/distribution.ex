@@ -48,7 +48,7 @@ defmodule SynSupervisor.Distribution do
     find_child_with_fn(
       scope,
       fn
-        {:child, %Child{pid: ^pid} = c} ->
+        %Child{pid: ^pid} = c ->
           {:ok, c}
 
         _ ->
@@ -57,11 +57,11 @@ defmodule SynSupervisor.Distribution do
     )
   end
 
-  def find_child(scope, id) when is_binary(id) do
+  def find_child(scope, id) do
     find_child_with_fn(
       scope,
       fn
-        {:child, %Child{id: ^id} = c} ->
+        %Child{id: ^id} = c ->
           {:ok, c}
 
         _ ->
