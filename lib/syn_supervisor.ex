@@ -209,7 +209,6 @@ defmodule SynSupervisor do
 
   See `Supervisor` for more information about child specifications.
   """
-  @doc since: "1.6.1"
   def child_spec(options) when is_list(options) do
     id =
       case Keyword.get(options, :name, SynSupervisor) do
@@ -306,7 +305,6 @@ defmodule SynSupervisor do
       an empty list.
 
   """
-  @doc since: "1.6.0"
   @spec start_link([option | init_option]) :: Supervisor.on_start()
   def start_link(options) when is_list(options) do
     keys = [
@@ -351,7 +349,6 @@ defmodule SynSupervisor do
   process and exits not only on crashes but also if the parent process exits
   with `:normal` reason.
   """
-  @doc since: "1.6.0"
   @spec start_link(module, term, [option]) :: Supervisor.on_start()
   def start_link(module, init_arg, opts \\ []) do
     GenServer.start_link(__MODULE__, {module, init_arg, opts[:name]}, opts)
@@ -382,7 +379,6 @@ defmodule SynSupervisor do
   of `:max_children` set on the supervisor initialization (see `init/1`), then
   this function returns `{:error, :max_children}`.
   """
-  @doc since: "1.6.0"
   @spec start_child(
           Supervisor.supervisor(),
           Supervisor.child_spec()
@@ -482,7 +478,6 @@ defmodule SynSupervisor do
   If successful, this function returns `:ok`. If there is no process with
   the given PID, this function returns `{:error, :not_found}`.
   """
-  @doc since: "1.6.0"
   @spec terminate_child(Supervisor.supervisor(), pid | term) :: :ok | {:error, :not_found}
   def terminate_child(supervisor, pid) when is_pid(pid) do
     call(supervisor, {:terminate_child, pid})
@@ -512,7 +507,6 @@ defmodule SynSupervisor do
     * `modules` - as defined in the child specification
 
   """
-  @doc since: "1.6.0"
   @spec which_children(Supervisor.supervisor()) :: [
           # module() | :dynamic here because :supervisor.modules() is not exported
           {:undefined, pid | :restarting, :worker | :supervisor, [module()] | :dynamic}
@@ -550,7 +544,6 @@ defmodule SynSupervisor do
       is still alive
 
   """
-  @doc since: "1.6.0"
   @spec count_children(Supervisor.supervisor()) :: %{
           specs: non_neg_integer,
           active: non_neg_integer,
@@ -585,7 +578,6 @@ defmodule SynSupervisor do
   If the reason is any other than `:normal`, `:shutdown` or
   `{:shutdown, _}`, an error report is logged.
   """
-  @doc since: "1.7.0"
   @spec stop(Supervisor.supervisor(), reason :: term, timeout) :: :ok
   def stop(supervisor, reason \\ :normal, timeout \\ :infinity) do
     GenServer.stop(supervisor, reason, timeout)
@@ -608,7 +600,6 @@ defmodule SynSupervisor do
       end
 
   """
-  @doc since: "1.6.0"
   @spec init([init_option]) :: {:ok, sup_flags()}
   def init(options) when is_list(options) do
     strategy = Keyword.get(options, :strategy, :one_for_one)
