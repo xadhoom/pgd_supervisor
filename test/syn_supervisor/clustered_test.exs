@@ -275,6 +275,58 @@ defmodule SynSupervisor.ClusteredTest do
     end
   end
 
+  describe "whereis/2" do
+    test "will return nil when a child_id is not found" do
+      [node1, _node2] = start_nodes(:test_app, "foo", 2)
+
+      child_spec_1 = Worker.child_spec(:init_args_a)
+
+      {:ok, _pid1} = start_child(node1, child_spec_1)
+
+      assert_async do
+        assert is_nil(:rpc.call(node1, SynSupervisor, :whereis, [@supervisor, :no_such_id]))
+      end
+    end
+
+    test "will return nil when the child is not started, its pid when it is" do
+      [node1, _node2] = start_nodes(:test_app, "foo", 2)
+
+      child_spec_1 = Worker.child_spec(:init_args_a)
+
+      assert_async do
+        assert is_nil(:rpc.call(node1, SynSupervisor, :whereis, [@supervisor, :init_args_a]))
+      end
+
+      {:ok, pid1} = start_child(node1, child_spec_1)
+
+      assert_async do
+        assert :rpc.call(node1, SynSupervisor, :whereis, [@supervisor, child_spec_1.id]) == pid1
+      end
+    end
+
+    test "will return a child pid with both local and non local children" do
+      [node1, node2] = start_nodes(:test_app, "foo", 2)
+
+      child_spec_1 = Worker.child_spec(:init_args_a)
+      child_spec_2 = Worker.child_spec(:init_args_b)
+
+      assert_async do
+        assert is_nil(:rpc.call(node1, SynSupervisor, :whereis, [@supervisor, child_spec_1.id]))
+      end
+
+      {:ok, pid1} = start_child(node1, child_spec_1)
+      {:ok, _pid2} = start_child(node2, child_spec_2)
+
+      assert_async do
+        assert :rpc.call(node1, SynSupervisor, :whereis, [@supervisor, child_spec_1.id]) == pid1
+      end
+
+      assert_async do
+        assert :rpc.call(node2, SynSupervisor, :whereis, [@supervisor, child_spec_1.id]) == pid1
+      end
+    end
+  end
+
   defp start_child(node, child_spec) do
     :rpc.call(node, SynSupervisor, :start_child, [@supervisor, child_spec])
   end

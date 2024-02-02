@@ -528,6 +528,16 @@ defmodule SynSupervisor do
   end
 
   @doc """
+  Returns the pid of the child with the given `child_id`.
+
+  If no matchin child is found, returns `nil`.
+  """
+  @spec whereis(supervisor :: Supervisor.supervisor(), child_id :: any()) :: nil | pid()
+  def whereis(supervisor, child_id) do
+    call(supervisor, {:whereis, child_id})
+  end
+
+  @doc """
   Returns a map containing count values for the supervisor.
 
   The map contains the following keys:
@@ -751,6 +761,17 @@ defmodule SynSupervisor do
       end)
 
     {:reply, reply, state}
+  end
+
+  @impl true
+  def handle_call({:whereis, child_id}, _from, state) do
+    case Distribution.find_child(state.scope, child_id) do
+      {:ok, %Child{pid: pid}} ->
+        {:reply, pid, state}
+
+      _ ->
+        {:reply, nil, state}
+    end
   end
 
   def handle_call(:count_children, _from, state) do
