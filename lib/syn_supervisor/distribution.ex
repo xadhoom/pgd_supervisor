@@ -161,13 +161,7 @@ defmodule SynSupervisor.Distribution do
   defp create_ring(scope, opts \\ []) do
     maybe_create_hash_ring(scope)
 
-    nodes =
-      scope
-      |> :syn.group_names()
-      |> Enum.reduce([], fn
-        {:member, node}, acc -> [node | acc]
-        _, acc -> acc
-      end)
+    nodes =  get_nodes(scope)
 
     if Keyword.get(opts, :check_members, false) do
       current_nodes = MapSet.new(nodes)
@@ -266,5 +260,25 @@ defmodule SynSupervisor.Distribution do
 
   defp child_group(%Child{} = c) do
     {:child, c}
+  end
+
+  defp get_nodes(scope) do
+      members_group_names(scope)
+  end
+
+  defp members_group_names(scope) do
+    node_param = :_
+    case :syn_backbone.get_table_name(:syn_pg_by_name, scope) do
+      :undefined ->
+        raise "cannot get table name"
+      table_by_name ->
+        duplicated_groups = :ets.select(table_by_name, [{
+          {{{:"$1", :"$2"}, :_}, :_, :_, :_, node_param},
+          [{:==, :"$1", :member}],
+          [:"$2"]
+        }])
+
+        duplicated_groups |> :ordsets.from_list() |> :ordsets.to_list()
+    end
   end
 end
