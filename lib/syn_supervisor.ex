@@ -199,6 +199,7 @@ defmodule SynSupervisor do
     :scope,
     :sync_interval,
     children: %{},
+    children_by_child_id: %{},
     restarts: []
   ]
 
@@ -961,7 +962,9 @@ defmodule SynSupervisor do
 
   defp save_child(pid, id, mfa, restart, shutdown, type, modules, state) do
     mfa = mfa_for_restart(mfa, restart)
-    put_in(state.children[pid], {id, mfa, restart, shutdown, type, modules})
+    child_spec = {id, mfa, restart, shutdown, type, modules}
+    state = put_in(state.children_by_child_id[id], child_spec)
+    put_in(state.children[pid], child_spec)
   end
 
   defp mfa_for_restart({m, f, _}, :temporary), do: {m, f, :undefined}
@@ -1093,18 +1096,8 @@ defmodule SynSupervisor do
     Distribution.reduce_specs(state.scope, state, maybe_start_missing)
   end
 
-  defp child_running?(%{children: children}, child_id) do
-    child =
-      children
-      |> Enum.find(fn
-        {_pid, {^child_id, _, _, _, _, _}} ->
-          true
-
-        _ ->
-          false
-      end)
-
-    not is_nil(child)
+  defp child_running?(%{children_by_child_id: children_by_child_id}, child_id) do
+    not is_nil(Map.get(children_by_child_id, child_id))
   end
 
   defp maybe_stop_child(%Child{} = c, assigned_node, _assigned_sup, state) do
@@ -1264,8 +1257,20 @@ defmodule SynSupervisor do
     {:ok, delete_child(pid, state)}
   end
 
-  defp delete_child(pid, %{children: children} = state) do
-    %{state | children: Map.delete(children, pid)}
+  defp delete_child(
+         pid,
+         %{children: children, children_by_child_id: children_by_child_id} = state
+       ) do
+    children_by_child_id =
+      case Map.get(children, pid) do
+        {child_id, _, _, _, _, _} ->
+          Map.delete(children_by_child_id, child_id)
+
+        _ ->
+          children_by_child_id
+      end
+
+    %{state | children: Map.delete(children, pid), children_by_child_id: children_by_child_id}
   end
 
   defp restart_child(pid, child, state) do
