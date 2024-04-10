@@ -81,11 +81,11 @@ defmodule SynSupervisor.Distribution do
   @spec find_spec(scope_t(), Child.id_t()) :: {:ok, Child.spec_t()} | {:error, :not_found}
   def find_spec(scope, child_id) do
     scope
-    |> spec_groups()
+    |> get_specs()
     |> Enum.find_value(
       {:error, :not_found},
       fn
-        {:spec, {^child_id, _, _, _, _, _} = s} ->
+        {^child_id, _, _, _, _, _} = s ->
           {:ok, s}
 
         _ ->
@@ -97,29 +97,29 @@ defmodule SynSupervisor.Distribution do
   @spec map_children(scope_t(), (Child.t() -> arg)) :: list(arg) when arg: any
   def map_children(scope, child_mapper_fun) do
     scope
-    |> child_groups()
-    |> Enum.map(fn {:child, child} -> child_mapper_fun.(child) end)
+    |> get_children()
+    |> Enum.map(fn child -> child_mapper_fun.(child) end)
   end
 
   @spec each_child(scope_t(), (Child.t() -> any())) :: :ok
   def each_child(scope, fun) do
     scope
-    |> child_groups()
-    |> Enum.each(fn {:child, child} -> fun.(child) end)
+    |> get_children()
+    |> Enum.each(fn child -> fun.(child) end)
   end
 
   @spec reduce_child(scope_t(), acc, (Child.t(), acc -> acc)) :: acc when acc: any()
   def reduce_child(scope, acc, fun) do
     scope
-    |> child_groups()
-    |> Enum.reduce(acc, fn {:child, child}, acc -> fun.(child, acc) end)
+    |> get_children()
+    |> Enum.reduce(acc, fn child, acc -> fun.(child, acc) end)
   end
 
   @spec reduce_specs(scope_t(), acc, (Child.spec_t(), acc -> acc)) :: acc when acc: any()
   def reduce_specs(scope, acc, fun) do
     scope
-    |> spec_groups()
-    |> Enum.reduce(acc, fn {:spec, spec}, acc -> fun.(spec, acc) end)
+    |> get_specs()
+    |> Enum.reduce(acc, fn spec, acc -> fun.(spec, acc) end)
   end
 
   @spec node_for_child(scope_t(), Child.spec_t()) :: Node.t()
@@ -161,7 +161,7 @@ defmodule SynSupervisor.Distribution do
   defp create_ring(scope, opts \\ []) do
     maybe_create_hash_ring(scope)
 
-    nodes =  get_nodes(scope)
+    nodes = get_nodes(scope)
 
     if Keyword.get(opts, :check_members, false) do
       current_nodes = MapSet.new(nodes)
@@ -241,15 +241,6 @@ defmodule SynSupervisor.Distribution do
     end)
   end
 
-  defp spec_groups(scope) do
-    scope
-    |> :syn.group_names()
-    |> Enum.filter(fn
-      {:spec, _child_spec} -> true
-      _ -> false
-    end)
-  end
-
   defp spec_group(child_spec) do
     {:spec, child_spec}
   end
@@ -263,20 +254,33 @@ defmodule SynSupervisor.Distribution do
   end
 
   defp get_nodes(scope) do
-      members_group_names(scope)
+    group_names_match(scope, :member)
   end
 
-  defp members_group_names(scope) do
+  defp get_children(scope) do
+    group_names_match(scope, :child)
+  end
+
+  defp get_specs(scope) do
+    group_names_match(scope, :spec)
+  end
+
+  defp group_names_match(scope, match) do
     node_param = :_
+
     case :syn_backbone.get_table_name(:syn_pg_by_name, scope) do
       :undefined ->
         raise "cannot get table name"
+
       table_by_name ->
-        duplicated_groups = :ets.select(table_by_name, [{
-          {{{:"$1", :"$2"}, :_}, :_, :_, :_, node_param},
-          [{:==, :"$1", :member}],
-          [:"$2"]
-        }])
+        duplicated_groups =
+          :ets.select(table_by_name, [
+            {
+              {{{:"$1", :"$2"}, :_}, :_, :_, :_, node_param},
+              [{:==, :"$1", match}],
+              [:"$2"]
+            }
+          ])
 
         duplicated_groups |> :ordsets.from_list() |> :ordsets.to_list()
     end

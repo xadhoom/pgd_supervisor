@@ -1094,19 +1094,17 @@ defmodule SynSupervisor do
   end
 
   defp child_running?(%{children: children}, child_id) do
-    children
-    |> Map.filter(fn
-      {_pid, {^child_id, _, _, _, _, _}} ->
-        true
+    child =
+      children
+      |> Enum.find(fn
+        {_pid, {^child_id, _, _, _, _, _}} ->
+          true
 
-      _ ->
-        false
-    end)
-    |> map_size()
-    |> case do
-      0 -> false
-      _ -> true
-    end
+        _ ->
+          false
+      end)
+
+    not is_nil(child)
   end
 
   defp maybe_stop_child(%Child{} = c, assigned_node, _assigned_sup, state) do
