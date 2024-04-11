@@ -88,7 +88,8 @@ defmodule SynSupervisorTest do
                 %{
                   strategy: :one_for_one,
                   scope: scope,
-                  sync_interval: 3_000,
+                  sync_interval: 5 * 60_000,
+                  sync_delay_on_topology_change: 5_000,
                   intensity: 3,
                   period: 5,
                   max_children: :infinity,
