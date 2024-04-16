@@ -144,6 +144,9 @@ defmodule SynSupervisor do
 
   @behaviour GenServer
 
+  @default_sync_interval 5 * 60_000
+  @sync_delay_on_topology_change 5_000
+
   @doc """
   Callback invoked to start the supervisor and during hot code upgrades.
 
@@ -160,6 +163,7 @@ defmodule SynSupervisor do
           max_children: non_neg_integer() | :infinity,
           extra_arguments: [term()],
           sync_interval: non_neg_integer(),
+          sync_delay_on_topology_change: non_neg_integer(),
           scope: atom()
         }
 
@@ -175,6 +179,7 @@ defmodule SynSupervisor do
           | {:extra_arguments, [term()]}
           | {:scope, atom()}
           | {:sync_interval, non_neg_integer()}
+          | {:sync_delay_on_topology_change, non_neg_integer()}
 
   @typedoc "Supported strategies"
   @type strategy :: :one_for_one
@@ -198,7 +203,10 @@ defmodule SynSupervisor do
     :max_seconds,
     :scope,
     :sync_interval,
+    :sync_delay_on_topology_change,
+    sync_interval_timer_ref: nil,
     children: %{},
+    children_by_child_id: %{},
     restarts: []
   ]
 
@@ -278,7 +286,12 @@ defmodule SynSupervisor do
 
     * `:sync_interval` - interval in milliseconds, how often the supervisor
       should synchronize its local state with the cluster by processing.
-      Optional, defaults to `3_000`
+      Optional, defaults to 5 minutes
+
+    * `:sync_delay_on_topology_change` - interval in milliseconds, how often
+      the supervisor should synchronize its local state with the cluster after a
+      topology change is detected.
+      Optional, defaults to 5 seconds
 
     * `:name` - registers the supervisor under the given name.
       The supported values are described under the "Name registration"
@@ -314,7 +327,8 @@ defmodule SynSupervisor do
       :max_restarts,
       :strategy,
       :scope,
-      :sync_interval
+      :sync_interval,
+      :sync_delay_on_topology_change
     ]
 
     {sup_opts, start_opts} = Keyword.split(options, keys)
@@ -618,7 +632,11 @@ defmodule SynSupervisor do
     max_children = Keyword.get(options, :max_children, :infinity)
     extra_arguments = Keyword.get(options, :extra_arguments, [])
     scope = Keyword.get(options, :scope)
-    sync_interval = Keyword.get(options, :sync_interval, 3_000)
+
+    sync_interval = Keyword.get(options, :sync_interval, @default_sync_interval)
+
+    sync_delay_on_topology_change =
+      Keyword.get(options, :sync_delay_on_topology_change, @sync_delay_on_topology_change)
 
     if scope == nil do
       raise ArgumentError, message: "Missing mandatory scope value"
@@ -631,6 +649,7 @@ defmodule SynSupervisor do
       max_children: max_children,
       scope: scope,
       sync_interval: sync_interval,
+      sync_delay_on_topology_change: sync_delay_on_topology_change,
       extra_arguments: extra_arguments
     }
 
@@ -658,6 +677,7 @@ defmodule SynSupervisor do
         case init(state, flags) do
           {:ok, state} ->
             Distribution.start_and_join(state.scope)
+            :net_kernel.monitor_nodes(true, node_type: :visible)
             {:ok, state}
 
           {:error, reason} ->
@@ -680,7 +700,11 @@ defmodule SynSupervisor do
     strategy = Map.get(flags, :strategy, :one_for_one)
     auto_shutdown = Map.get(flags, :auto_shutdown, :never)
     scope = Map.get(flags, :scope)
-    sync_interval = Map.get(flags, :sync_interval, 3_000)
+
+    sync_interval = Map.get(flags, :sync_interval, @default_sync_interval)
+
+    sync_delay_on_topology_change =
+      Map.get(flags, :sync_delay_on_topology_change, @sync_delay_on_topology_change)
 
     with :ok <- validate_strategy(strategy),
          :ok <- validate_restarts(max_restarts),
@@ -689,8 +713,12 @@ defmodule SynSupervisor do
          :ok <- validate_extra_arguments(extra_arguments),
          :ok <- validate_auto_shutdown(auto_shutdown),
          :ok <- validate_scope(scope),
-         :ok <- validate_sync_interval(sync_interval) do
-      Process.send_after(self(), :sync, sync_interval)
+         :ok <- validate_sync_interval(sync_interval),
+         :ok <- validate_sync_interval(sync_delay_on_topology_change) do
+      # schedule the first sync interval to be short, since we want immediate
+      # sync, then use the long period, since we have the nodeup/nodedown
+      # events
+      state = reschedule_sync_interval_timer(state, sync_delay_on_topology_change)
 
       {:ok,
        %{
@@ -701,7 +729,8 @@ defmodule SynSupervisor do
            max_seconds: max_seconds,
            strategy: strategy,
            scope: scope,
-           sync_interval: sync_interval
+           sync_interval: sync_interval,
+           sync_delay_on_topology_change: sync_delay_on_topology_change
        }}
     end
   end
@@ -961,7 +990,9 @@ defmodule SynSupervisor do
 
   defp save_child(pid, id, mfa, restart, shutdown, type, modules, state) do
     mfa = mfa_for_restart(mfa, restart)
-    put_in(state.children[pid], {id, mfa, restart, shutdown, type, modules})
+    child_spec = {id, mfa, restart, shutdown, type, modules}
+    state = put_in(state.children_by_child_id[id], child_spec)
+    put_in(state.children[pid], child_spec)
   end
 
   defp mfa_for_restart({m, f, _}, :temporary), do: {m, f, :undefined}
@@ -1006,7 +1037,17 @@ defmodule SynSupervisor do
   def handle_info(:sync, state) do
     state = redistribute_processes(state)
 
-    Process.send_after(self(), :sync, state.sync_interval)
+    state = reschedule_sync_interval_timer(state)
+    {:noreply, state}
+  end
+
+  def handle_info({:nodeup, _node, _node_type}, state) do
+    state = reschedule_sync_interval_timer(state, state.sync_delay_on_topology_change)
+    {:noreply, state}
+  end
+
+  def handle_info({:nodedown, _node, _node_type}, state) do
+    state = reschedule_sync_interval_timer(state, state.sync_delay_on_topology_change)
     {:noreply, state}
   end
 
@@ -1093,20 +1134,8 @@ defmodule SynSupervisor do
     Distribution.reduce_specs(state.scope, state, maybe_start_missing)
   end
 
-  defp child_running?(%{children: children}, child_id) do
-    children
-    |> Map.filter(fn
-      {_pid, {^child_id, _, _, _, _, _}} ->
-        true
-
-      _ ->
-        false
-    end)
-    |> map_size()
-    |> case do
-      0 -> false
-      _ -> true
-    end
+  defp child_running?(%{children_by_child_id: children_by_child_id}, child_id) do
+    not is_nil(Map.get(children_by_child_id, child_id))
   end
 
   defp maybe_stop_child(%Child{} = c, assigned_node, _assigned_sup, state) do
@@ -1266,8 +1295,20 @@ defmodule SynSupervisor do
     {:ok, delete_child(pid, state)}
   end
 
-  defp delete_child(pid, %{children: children} = state) do
-    %{state | children: Map.delete(children, pid)}
+  defp delete_child(
+         pid,
+         %{children: children, children_by_child_id: children_by_child_id} = state
+       ) do
+    children_by_child_id =
+      case Map.get(children, pid) do
+        {child_id, _, _, _, _, _} ->
+          Map.delete(children_by_child_id, child_id)
+
+        _ ->
+          children_by_child_id
+      end
+
+    %{state | children: Map.delete(children, pid), children_by_child_id: children_by_child_id}
   end
 
   defp restart_child(pid, child, state) do
@@ -1362,6 +1403,21 @@ defmodule SynSupervisor do
       shutdown: shutdown,
       child_type: type
     ]
+  end
+
+  defp reschedule_sync_interval_timer(state, interval \\ nil) do
+    interval = interval || state.sync_interval
+
+    case state.sync_interval_timer_ref do
+      ref when is_reference(ref) ->
+        Process.cancel_timer(ref)
+
+      _ ->
+        false
+    end
+
+    timer_ref = Process.send_after(self(), :sync, interval)
+    %SynSupervisor{state | sync_interval_timer_ref: timer_ref}
   end
 
   @impl true
